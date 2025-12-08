@@ -22,7 +22,6 @@ experiment = Experiment(
     api_key="tlPyEqcWoRIJ9LyqK7782UYRC",
     project_name="federated-sarah",
     workspace="zukep102",
-    log_conda_packages=False
 )
 experiment.set_name("SARAH-ResNet18-CIFAR10-named-grads")
 
