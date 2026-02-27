@@ -36,10 +36,12 @@ FINAL_EPOCHS = 200
 
 DATA_ROOT = "./data"
 NUM_WORKERS = 2
-TEST_BATCH_SIZE = 256
-VAL_SPLIT = 0.1
+TEST_BATCH_SIZE = 128
+VAL_SPLIT = 0.2
 SEED = 42
 
+# sarah_lr = базовый learning rate для SARAH (после warmup по нему идёт cosine decay до min_lr).
+# label_smoothing = сглаживание меток в CrossEntropy (0 = one-hot; 0.1 типично для CIFAR-10).
 DEFAULT_PARAMS = {
     "sarah_lr": 0.02,
     "weight_decay": 5e-4,
@@ -48,18 +50,18 @@ DEFAULT_PARAMS = {
     "label_smoothing": 0.1,
     "max_grad_norm": 5.0,
     "batch_size": 128,
+    "momentum": 0.0,
 }
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# Золотой стандарт для CIFAR-10: RandomCrop + RandomHorizontalFlip + Normalize.
 transform_train = transforms.Compose([
     transforms.RandomCrop(32, padding=4),
     transforms.RandomHorizontalFlip(),
-    transforms.AutoAugment(transforms.AutoAugmentPolicy.CIFAR10),
     transforms.ToTensor(),
     transforms.Normalize((0.4914, 0.4822, 0.4465),
                          (0.2023, 0.1994, 0.2010)),
-    transforms.RandomErasing(p=0.25, scale=(0.02, 0.2), ratio=(0.3, 3.3))
 ])
 
 transform_test = transforms.Compose([
@@ -241,6 +243,24 @@ def apply_update(params, grads, lr):
             param.add_(grad, alpha=-lr)
 
 
+def zeros_like_grads(model_for_shape):
+    """List of zero tensors with same shapes as model parameters (for momentum buffer)."""
+    return [torch.zeros_like(p) if p.requires_grad else None for p in model_for_shape.parameters()]
+
+
+def momentum_step(momentum_buf, v_t, beta):
+    """m_new = beta * m_old + v_t. Returns new list."""
+    if beta == 0:
+        return [g.detach().clone() if g is not None else None for g in v_t]
+    out = []
+    for m, v in zip(momentum_buf, v_t):
+        if v is None:
+            out.append(None)
+        else:
+            out.append((m * beta + v).detach().clone())
+    return out
+
+
 def compute_full_grad(model_for_grad, loader, loss_fn_sum, decay):
     model_for_grad.train()
     for param in model_for_grad.parameters():
@@ -261,7 +281,7 @@ def compute_full_grad(model_for_grad, loader, loss_fn_sum, decay):
     return apply_weight_decay(full_grads, model_for_grad, decay)
 
 
-def train_epoch(model, trainloader, criterion, criterion_sum, weight_decay, max_grad_norm, lr):
+def train_epoch(model, trainloader, criterion, criterion_sum, weight_decay, max_grad_norm, lr, momentum=0.0):
     model.train()
     full_grads = compute_full_grad(model, trainloader, criterion_sum, weight_decay)
     full_grads = clip_grads(full_grads, max_grad_norm)
@@ -269,6 +289,8 @@ def train_epoch(model, trainloader, criterion, criterion_sum, weight_decay, max_
 
     apply_update(model.parameters(), full_grads, lr)
     v_prev = full_grads
+    # Momentum buffer: after full-grad step we treat full_grads as "previous direction"
+    m_prev = [g.detach().clone() if g is not None else None for g in full_grads] if momentum != 0 else None
 
     running_loss = 0.0
     correct = 0
@@ -302,7 +324,12 @@ def train_epoch(model, trainloader, criterion, criterion_sum, weight_decay, max_
         correct += predicted.eq(targets).sum().item()
 
         model_prev.load_state_dict(model.state_dict())
-        apply_update(model.parameters(), v_t, lr)
+        if momentum != 0:
+            m_t = momentum_step(m_prev, v_t, momentum)
+            apply_update(model.parameters(), m_t, lr)
+            m_prev = m_t
+        else:
+            apply_update(model.parameters(), v_t, lr)
         v_prev = v_t
 
     train_loss = running_loss / total
@@ -369,6 +396,7 @@ def train_loop(
             params["weight_decay"],
             params["max_grad_norm"],
             lr,
+            momentum=params.get("momentum", 0.0),
         )
         eval_loss, eval_acc = evaluate(model, eval_loader, criterion)
         if eval_acc > best_eval_acc:
@@ -405,9 +433,10 @@ def objective(trial):
         "warmup_epochs": trial.suggest_int("warmup_epochs", 0, 20),
         "min_lr_ratio": trial.suggest_float("min_lr_ratio", 1e-3, 1e-1, log=True),
         "max_grad_norm": trial.suggest_float("max_grad_norm", 0.5, 10.0),
-        "batch_size": trial.suggest_categorical("batch_size", [64, 128, 256]),
+        "momentum": trial.suggest_float("momentum", 0.0, 0.95),
     }
     params = finalize_params(params)
+    params["batch_size"] = 128  # зафиксирован
 
     trainloader, valloader = build_dataloaders(params["batch_size"], VAL_SPLIT, SEED)
     model = build_model().to(device)
@@ -471,6 +500,7 @@ def main():
         study.optimize(objective, n_trials=TUNING_TRIALS)
 
         best_params = finalize_params(study.best_trial.params)
+        best_params["batch_size"] = 128
         print(f"Best val acc: {study.best_value:.2f}%")
         print(f"Best params: {best_params}")
 
