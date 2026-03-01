@@ -44,6 +44,7 @@ TUNING_EPOCHS = 60
 FINAL_EPOCHS = 200
 
 NUM_CLIENTS = 10
+NOFULLGRAD = False  # True = no-full-grad SARAH; False = standard (full grad each epoch)
 
 DEFAULT_PARAMS = {
     "sarah_lr": 0.02,
@@ -140,6 +141,7 @@ def objective(trial):
         eval_name="val",
         experiment=experiment,
         trial=trial,
+        nofullgrad=NOFULLGRAD,
     )
 
     if experiment is not None:
@@ -172,6 +174,7 @@ def train_with_params(params, total_epochs, run_name):
         device=device,
         eval_name="test",
         experiment=experiment,
+        nofullgrad=NOFULLGRAD,
     )
 
     if experiment is not None:
@@ -189,6 +192,7 @@ def main():
 
     print(f"Device: {device}")
     print(f"Num clients: {NUM_CLIENTS}")
+    print(f"No-full-grad: {NOFULLGRAD}")
 
     if RUN_TUNING:
         sampler = TPESampler(seed=SEED)

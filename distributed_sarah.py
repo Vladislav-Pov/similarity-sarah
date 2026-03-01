@@ -134,6 +134,11 @@ class Server:
         
         # Previous model for computing grad_xprev
         self.model_prev = None
+        
+        # No-full-grad state (persists across epochs)
+        self.v_persistent = None  # v^(s): carried between epochs
+        self.v_tilde = None       # ṽ: running average gradient within epoch
+        self.inner_step = 0       # t: step counter within epoch
     
     def _apply_weight_decay(self, grads, model=None):
         """Add weight decay to gradients: grad + lambda * w."""
@@ -267,6 +272,112 @@ class Server:
         """Return previous model (for computing grad_xprev)."""
         return self.model_prev
 
+    # --------------------------------------------------
+    # No-Full-Grad SARAH methods
+    # --------------------------------------------------
+
+    def initialize_sarah_nofullgrad(self, lr):
+        """
+        Initialize SARAH for the no-full-grad variant at the start of an epoch.
+
+        At epoch s=0: v^(0)=0, ṽ_1^(0)=0.
+        At epoch s>0: v_0^(s) = v^(s) (carried from previous epoch).
+
+        v_persistent already includes weight decay from the running average,
+        so no additional weight decay is applied here.
+        """
+        if self.v_persistent is None:
+            self.v_persistent = [
+                torch.zeros_like(p) if p.requires_grad else None
+                for p in self.model.parameters()
+            ]
+
+        # v_0 = v^(s)
+        self.v_t = [
+            v.detach().clone() if v is not None else None
+            for v in self.v_persistent
+        ]
+        # ṽ_1 = 0
+        self.v_tilde = [
+            torch.zeros_like(p) if p.requires_grad else None
+            for p in self.model.parameters()
+        ]
+        # s_0 = v_0 (momentum variant 2)
+        self.s_t = [
+            v.detach().clone() if v is not None else None
+            for v in self.v_t
+        ]
+        self.inner_step = 0
+
+        # Store model_prev before first update
+        self.model_prev = copy.deepcopy(self.model).to(self.device)
+
+        # First step: w_1 = w_0 - η·v_0
+        v_0_clipped = self._clip_grads(self.v_t)
+        self._apply_update(v_0_clipped, lr)
+
+    def apply_sarah_step_nofullgrad(self, grad_xt, grad_xprev, lr, beta):
+        """
+        One inner step for no-full-grad SARAH.
+
+        Updates both estimators:
+            ṽ_{t+1} = (t-1)/t · ṽ_t  +  1/t · ∇f(w_t)       (running average)
+            v_t     = v_{t-1} + ∇f_πt(w_t) - ∇f_πt(w_{t-1})  (SARAH)
+            s_t     = β·s_{t-1} + v_t                          (momentum)
+            w_{t+1} = w_t - η·s_t                              (param update)
+        """
+        self.inner_step += 1
+        t = self.inner_step
+
+        # Weight decay: current model for grad_xt, previous model for grad_xprev
+        grad_xt_wd = self._apply_weight_decay(grad_xt)
+        grad_xprev_wd = self._apply_weight_decay(grad_xprev, model=self.model_prev)
+
+        # Running average: ṽ_{t+1} = (t-1)/t · ṽ_t + 1/t · grad_xt_wd
+        new_tilde = []
+        for vt, g in zip(self.v_tilde, grad_xt_wd):
+            if g is None:
+                new_tilde.append(None)
+            else:
+                new_tilde.append(((t - 1) / t) * vt + (1.0 / t) * g)
+        self.v_tilde = new_tilde
+
+        # SARAH: v_t = v_{t-1} + grad_xt_wd - grad_xprev_wd
+        v_t = []
+        for g_cur, g_prev, v_old in zip(grad_xt_wd, grad_xprev_wd, self.v_t):
+            if g_cur is None:
+                v_t.append(None)
+            else:
+                v_t.append(g_cur - g_prev + v_old)
+        v_t = self._clip_grads(v_t)
+
+        # Momentum: s_t = β·s_{t-1} + v_t
+        if beta > 0:
+            s_t = []
+            for s_old, v in zip(self.s_t, v_t):
+                if v is None:
+                    s_t.append(None)
+                else:
+                    s_t.append((beta * s_old + v).detach().clone())
+        else:
+            s_t = [v.detach().clone() if v is not None else None for v in v_t]
+
+        # Store current model as previous
+        self.model_prev.load_state_dict(self.model.state_dict())
+
+        # Parameter update: w_{t+1} = w_t - η·s_t
+        self._apply_update(s_t, lr)
+
+        self.v_t = v_t
+        self.s_t = s_t
+
+    def finalize_epoch_nofullgrad(self):
+        """End of epoch: v^(s+1) = ṽ_{n+1}^(s)."""
+        self.v_persistent = [
+            v.detach().clone() if v is not None else None
+            for v in self.v_tilde
+        ]
+
 
 def create_clients(dataset, num_clients, batch_size, device, num_workers=2, drop_last=True):
     """
@@ -317,11 +428,12 @@ def train_epoch_distributed(
     criterion,
     criterion_sum,
     lr: float,
-    momentum: float = 0.0
+    momentum: float = 0.0,
+    nofullgrad: bool = False,
 ) -> Tuple[float, float]:
     """
     Train one epoch using distributed SARAH with K clients.
-    
+
     Args:
         clients: List of K Client objects
         server: Server object with global model
@@ -329,78 +441,80 @@ def train_epoch_distributed(
         criterion_sum: Loss function (sum reduction)
         lr: Learning rate
         momentum: Momentum coefficient (beta)
-    
+        nofullgrad: If True, skip full gradient — use running-average estimator instead.
+
     Returns:
         (train_loss, train_acc): Average loss and accuracy over all batches
     """
     K = len(clients)
     model = server.get_model()
     model.train()
-    
+
     # ==========================================
-    # Step 1: Distributed full gradient computation
+    # Step 1: Initialize SARAH
     # ==========================================
-    print("Computing distributed full gradient...")
-    full_grads_list = []
-    total_samples = 0
-    
-    for client in clients:
-        grads, num_samples = client.compute_full_grad(model, criterion_sum)
-        full_grads_list.append(grads)
-        total_samples += num_samples
-    
-    # Aggregate by averaging: v_0 = (1/K) * sum_i grad_i / n_i, normalized by total samples
-    # Each client returns unnormalized sum, so we sum all and divide by total_samples
-    full_grad_avg = []
-    for param_idx in range(len(full_grads_list[0])):
-        if full_grads_list[0][param_idx] is None:
-            full_grad_avg.append(None)
-        else:
-            summed = sum(client_grads[param_idx] for client_grads in full_grads_list)
-            full_grad_avg.append(summed / total_samples)
-    
+    if nofullgrad:
+        server.initialize_sarah_nofullgrad(lr)
+    else:
+        full_grads_list = []
+        total_samples = 0
+        for client in clients:
+            grads, num_samples = client.compute_full_grad(model, criterion_sum)
+            full_grads_list.append(grads)
+            total_samples += num_samples
+
+        full_grad_avg = []
+        for param_idx in range(len(full_grads_list[0])):
+            if full_grads_list[0][param_idx] is None:
+                full_grad_avg.append(None)
+            else:
+                summed = sum(cg[param_idx] for cg in full_grads_list)
+                full_grad_avg.append(summed / total_samples)
+
+        server.initialize_sarah(full_grad_avg, lr)
+
     # ==========================================
-    # Step 2: Initialize SARAH (v_0, s_0, first step)
-    # ==========================================
-    server.initialize_sarah(full_grad_avg, lr)
-    
-    # ==========================================
-    # Step 3: Random permutation of clients
+    # Step 2: Random permutation of clients
     # ==========================================
     client_order = list(range(K))
     random.shuffle(client_order)
-    
+
     # ==========================================
-    # Step 4: Iterate over clients in random order
+    # Step 3: Iterate over clients in random order
     # ==========================================
     running_loss = 0.0
     correct = 0
     total = 0
-    
+
     for t, client_idx in enumerate(client_order):
         client = clients[client_idx]
         batch = client.sample_batch()
-        
-        # Compute grad_xt at current model (also returns metrics BEFORE update)
+
         grad_xt, batch_loss, batch_correct, batch_total = client.compute_grad(
             model, batch, criterion
         )
-        
-        # Compute grad_xprev at previous model
+
         model_prev = server.get_prev_model()
         grad_xprev, _, _, _ = client.compute_grad(model_prev, batch, criterion)
-        
-        # Collect metrics (at x_t, before the step — matches centralized version)
+
         running_loss += batch_loss * batch_total
         correct += batch_correct
         total += batch_total
-        
-        # Server applies SARAH step: x_{t+1} = x_t - lr * s_t
-        server.apply_sarah_step(grad_xt, grad_xprev, lr, momentum)
-    
+
+        if nofullgrad:
+            server.apply_sarah_step_nofullgrad(grad_xt, grad_xprev, lr, momentum)
+        else:
+            server.apply_sarah_step(grad_xt, grad_xprev, lr, momentum)
+
+    # ==========================================
+    # Step 4: End of epoch (no-full-grad only)
+    # ==========================================
+    if nofullgrad:
+        server.finalize_epoch_nofullgrad()
+
     train_loss = running_loss / total if total > 0 else 0.0
     train_acc = 100.0 * correct / total if total > 0 else 0.0
-    
+
     return train_loss, train_acc
 
 
@@ -421,6 +535,7 @@ def train_loop_distributed(
     eval_name="val",
     experiment=None,
     trial=None,
+    nofullgrad=False,
 ):
     """
     Distributed training loop for multiple epochs.
@@ -431,7 +546,7 @@ def train_loop_distributed(
         model: PyTorch model
         criterion: Loss function (mean reduction)
         criterion_sum: Loss function (sum reduction)
-        params: Dict with hyperparameters (sarah_lr, weight_decay, max_grad_norm, 
+        params: Dict with hyperparameters (sarah_lr, weight_decay, max_grad_norm,
                 batch_size, momentum, warmup_epochs, min_lr)
         total_epochs: Number of epochs
         num_clients: K (number of clients)
@@ -439,6 +554,7 @@ def train_loop_distributed(
         eval_name: Name for logging ("val" or "test")
         experiment: Comet ML experiment (optional)
         trial: Optuna trial (optional)
+        nofullgrad: If True, use no-full-grad SARAH variant
     
     Returns:
         best_eval_acc: Best evaluation accuracy
@@ -485,6 +601,7 @@ def train_loop_distributed(
             criterion_sum=criterion_sum,
             lr=lr,
             momentum=params.get("momentum", 0.0),
+            nofullgrad=nofullgrad,
         )
         
         # Evaluation
