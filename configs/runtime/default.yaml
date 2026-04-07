@@ -1,0 +1,5 @@
+device: auto
+eval_every: 1
+log_every: 1
+num_workers: 2
+batch_size: 128

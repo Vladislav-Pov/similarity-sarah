@@ -1,0 +1,9 @@
+defaults:
+  - algorithm: batched_nfg_sarah
+  - data: cifar10
+  - model: simple_cnn
+  - partition: uniform
+  - runtime: default
+  - _self_
+
+seed: 42

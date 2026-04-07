@@ -1,0 +1,23 @@
+# @package _global_
+# Minimal experiment with synthetic data — works offline (no download).
+defaults:
+  - override /algorithm: batched_nfg_sarah
+  - override /data: synthetic
+  - override /model: simple_cnn
+  - override /partition: uniform
+  - override /runtime: default
+
+seed: 42
+
+algorithm:
+  num_clients: 4
+  batch_size_clients: 2
+  theta: 0.01
+  prox_num_steps: 3
+  prox_lr: 0.01
+  num_epochs: 2
+
+runtime:
+  device: cpu
+  num_workers: 0
+  batch_size: 32

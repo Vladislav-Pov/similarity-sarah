@@ -1,0 +1,10 @@
+name: batched_nfg_sarah
+
+num_clients: 10
+batch_size_clients: 2
+theta: 0.01
+num_epochs: 50
+
+# Inexact proximal solver hyper-parameters
+prox_num_steps: 5
+prox_lr: 0.01
