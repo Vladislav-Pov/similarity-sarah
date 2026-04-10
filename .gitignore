@@ -6,8 +6,8 @@ dist/
 build/
 .eggs/
 
-# Data downloads
-data/
+# Data downloads (root only; plain `data/` would ignore similarity_sarah/data/)
+/data/
 
 # Hydra outputs
 outputs/

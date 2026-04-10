@@ -1,0 +1,5 @@
+name: synthetic
+data_dir: ./data
+val_fraction: 0.1
+n_train: 500
+n_test: 100
