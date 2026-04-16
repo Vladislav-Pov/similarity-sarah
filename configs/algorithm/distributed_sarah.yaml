@@ -3,4 +3,4 @@ name: distributed_sarah
 num_clients: 10
 batch_size_clients: 2
 lr: 0.01
-num_epochs: 50
+num_epochs: 75

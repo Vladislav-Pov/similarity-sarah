@@ -80,7 +80,7 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         self.loss_fn = loss_fn
         self.device = device
         self.num_clients = len(client_loaders)
-        self.total_nodes = self.num_clients + 1
+        self.total_nodes = self.num_clients + 1 # maybe without +1
 
         self.scheduler = ClientBatchScheduler(
             self.num_clients, self.batch_size_clients,
@@ -102,7 +102,7 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         w_prev = get_params(self.model)
         grad_f1_prev = compute_full_gradient(
             self.model, self.server_loader, self.loss_fn, self.device,
-        )
+        ) ## it is possible to count with stochastic gradient 
 
         # w₁ = prox_{θf₁}(w₀ − θv₀)
         self.prox_solver.step(

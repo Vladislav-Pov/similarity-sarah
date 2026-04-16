@@ -124,3 +124,7 @@ The proximal step `prox_{θf₁}(z)` is approximated by `InexactProxSGD`
   gradient is required for the SARAH estimators.
 - **No BatchNorm** in the default CNN — avoids stochastic forward passes that
   would break deterministic gradient computation.
+
+## Command for going the run
+1. `python main.py search=optuna runtime.wandb.enabled=true` - запуск с перебором параметром через Optuna
+2. `python main.py runtime.wandb.enabled=true` - дефолтный запуск

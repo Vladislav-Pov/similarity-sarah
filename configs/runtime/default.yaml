@@ -2,4 +2,18 @@ device: auto
 eval_every: 1
 log_every: 1
 num_workers: 2
+# Minibatch size for training loaders. ``batch_size`` is the default for both roles.
 batch_size: 128
+# Server partition (objective f₁): override to differ from clients, e.g. smaller server shard.
+batch_size_server: ${batch_size}
+# Client partitions: minibatch for each client's local DataLoader.
+batch_size_data_clients: ${batch_size}
+
+wandb:
+  enabled: false
+  project: similarity-sarah
+  entity: chirkov
+  group: null
+  tags: []
+  job_type: null
+  name: null

@@ -1,0 +1,18 @@
+enabled: true
+method: grid
+max_epochs: 75
+num_trials: 12
+wandb_project: similarity-sarah
+wandb_group: "grid-${now:%Y%m%d-%H%M%S}"
+
+shared:
+  batch_size_clients: [2, 4]
+  num_epochs: 75
+
+distributed_sarah:
+  lr: [0.005, 0.01, 0.02]
+
+batched_nfg_sarah:
+  theta: [0.005, 0.01, 0.02]
+  prox_lr: [0.005, 0.01]
+  prox_num_steps: [5, 8, 12]

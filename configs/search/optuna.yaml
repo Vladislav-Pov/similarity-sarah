@@ -1,0 +1,18 @@
+enabled: true
+method: optuna
+max_epochs: 150
+num_trials: 1
+wandb_project: similarity-sarah
+wandb_group: "optuna-${now:%Y%m%d-%H%M%S}"
+
+shared:
+  batch_size_clients: [1]
+  num_epochs: 150
+
+distributed_sarah:
+  lr: [0.01]
+
+batched_nfg_sarah:
+  theta: [0.02]
+  prox_lr: [0.01]
+  prox_num_steps: [18]

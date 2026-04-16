@@ -4,6 +4,7 @@ defaults:
   - model: simple_cnn
   - partition: uniform
   - runtime: default
+  - search: none
   - _self_
 
 seed: 42
