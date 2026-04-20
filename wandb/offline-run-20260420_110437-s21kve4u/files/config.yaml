@@ -1,0 +1,204 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.10.20
+    cli_version: 0.25.1
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1776672277
+    t:
+      1:
+      - 1
+      - 35
+      - 41
+      - 50
+      2:
+      - 1
+      - 35
+      - 41
+      - 50
+      3:
+      - 2
+      - 4
+      - 13
+      - 15
+      - 16
+      - 42
+      - 61
+      4: 3.10.20
+      5: 0.25.1
+      13: linux-x86_64
+    e:
+      rrstj3eg3zfjn708ixfizwi0u8tngq6m:
+        os: Linux-5.15.0-139-generic-x86_64-with-glibc2.31
+        python: CPython 3.10.20
+        started_at: '2026-04-20T08:04:37.301235Z'
+        args:
+        - search=optuna
+        - runtime.wandb.enabled=true
+        program: /home/Xattta6bI4/similarity-sarah/main.py
+        code_path: main.py
+        code_path_local: main.py
+        git:
+          remote_url: git@github.com:Vladislav-Pov/similarity-sarah.git
+          commit: 0ccebb889210ff4fde92abfad70b4262b02493c1
+        root: /home/Xattta6bI4/similarity-sarah
+        host: opt-mipt
+        executable: /home/Xattta6bI4/miniconda3/envs/nfg_env/bin/python
+        cpu_count: 48
+        cpu_count_logical: 48
+        gpu_type: NVIDIA A100-PCIE-40GB
+        gpu_count: 8
+        disk:
+          /:
+            total: '142597365760'
+            used: '116991942656'
+        memory:
+          total: '541031403520'
+        gpu_nvidia:
+        - name: NVIDIA A100-PCIE-40GB
+          memory_total: '42949672960'
+          cuda_cores: 6912
+          architecture: Ampere
+          uuid: GPU-65642e9c-aa01-6b54-9940-e7d03971b2f6
+        - name: NVIDIA GeForce RTX 2080 Ti
+          memory_total: '11811160064'
+          cuda_cores: 4352
+          architecture: Turing
+          uuid: GPU-c6d16bdc-c5c9-e35b-4e92-8c96988384f1
+        - name: NVIDIA A100-SXM4-80GB
+          memory_total: '85899345920'
+          cuda_cores: 6912
+          architecture: Ampere
+          uuid: GPU-093c0e0c-a9ee-3383-ac6d-e6b3d6095c1b
+        - name: NVIDIA A100-PCIE-40GB
+          memory_total: '42949672960'
+          cuda_cores: 6912
+          architecture: Ampere
+          uuid: GPU-7a50f6c7-f545-0b4c-f32f-9edb6a7e7eaa
+        - name: NVIDIA A100-SXM4-80GB
+          memory_total: '85899345920'
+          cuda_cores: 6912
+          architecture: Ampere
+          uuid: GPU-91279309-1b26-7c66-694f-a18d2c81fd85
+        - name: NVIDIA A100-PCIE-40GB
+          memory_total: '42949672960'
+          cuda_cores: 6912
+          architecture: Ampere
+          uuid: GPU-5430d3bb-f055-7a03-62f9-36ce1cf238c8
+        - name: NVIDIA A100-PCIE-40GB
+          memory_total: '42949672960'
+          cuda_cores: 6912
+          architecture: Ampere
+          uuid: GPU-b2f68da5-f46c-c411-5fca-74699a6a3f94
+        - name: NVIDIA GeForce RTX 2080 Ti
+          memory_total: '11811160064'
+          cuda_cores: 4352
+          architecture: Turing
+          uuid: GPU-d9fc0582-a134-ded0-909d-e88d902ecc0b
+        cuda_version: '12.9'
+        writer_id: rrstj3eg3zfjn708ixfizwi0u8tngq6m
+base:
+  desc: null
+  value:
+    algorithm:
+      name: batched_nfg_sarah
+      num_clients: 10
+      batch_size_clients: 1
+      theta: 0.05
+      num_epochs: 100
+      prox_solver: sgd
+      prox_num_steps: 100
+      prox_lr: 0.05
+      prox_momentum: 0.9
+      prox_weight_decay: 0.0005
+    data:
+      name: cifar10
+      data_dir: ./data
+      val_fraction: 0.1
+      augment_server: true
+    model:
+      name: resnet18_32x32
+      num_classes: 10
+    partition:
+      name: uniform
+    runtime:
+      device: auto
+      eval_every: 1
+      log_every: 1
+      num_workers: 2
+      batch_size: 128
+      batch_size_server: 128
+      batch_size_data_clients: 128
+      prox_lr_schedule:
+        kind: constant
+        t_max: 100
+        min_factor: 0.01
+        step_every: 30
+        gamma: 0.1
+      wandb:
+        enabled: true
+        project: similarity-sarah
+        entity: chirkov
+        group: null
+        tags: []
+        job_type: null
+        name: null
+    search:
+      enabled: true
+      method: optuna
+      max_epochs: 100
+      num_trials: 30
+      wandb_project: similarity-sarah
+      wandb_group: optuna-20260419-031634
+      sampler:
+        kind: tpe
+        seed: 0
+      pruner:
+        kind: median
+        n_startup_trials: 5
+        n_warmup_epochs: 5
+        interval_epochs: 1
+      shared:
+        batch_size_clients:
+          type: int
+          low: 1
+          high: 4
+      batched_nfg_sarah:
+        theta:
+          type: float
+          low: 0.001
+          high: 0.1
+          log: true
+        prox_lr:
+          type: float
+          low: 0.001
+          high: 0.2
+          log: true
+        prox_num_steps:
+          type: int
+          low: 20
+          high: 200
+          log: true
+        prox_momentum:
+          type: float
+          low: 0.0
+          high: 0.95
+        prox_weight_decay:
+          type: float
+          low: 1.0e-06
+          high: 0.001
+          log: true
+    seed: 42
+search_params:
+  desc: null
+  value:
+    shared.batch_size_clients: 1
+    batched_nfg_sarah.theta: 0.013308699177424286
+    batched_nfg_sarah.prox_lr: 0.0010607340437462462
+    batched_nfg_sarah.prox_num_steps: 199
+    batched_nfg_sarah.prox_momentum: 0.6579892924589263
+    batched_nfg_sarah.prox_weight_decay: 5.901635200857223e-05

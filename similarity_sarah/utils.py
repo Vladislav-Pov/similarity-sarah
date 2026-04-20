@@ -63,6 +63,19 @@ def compute_param_norm_sq(params: ParamList) -> float:
     return sum(p.square().sum().item() for p in params)
 
 
+def compute_param_norm(params: ParamList) -> float:
+    """Compute L2 norm of parameter list."""
+    return float(compute_param_norm_sq(params) ** 0.5)
+
+
+def diff_param_norm(a: ParamList, b: ParamList) -> float:
+    """Compute L2 norm of (a - b)."""
+    s = 0.0
+    for ai, bi in zip(a, b):
+        s += (ai - bi).square().sum().item()
+    return float(s ** 0.5)
+
+
 def compute_full_gradient(
     model: nn.Module,
     loader: DataLoader,

@@ -2,12 +2,25 @@ device: auto
 eval_every: 1
 log_every: 1
 num_workers: 2
-# Minibatch size for training loaders. ``batch_size`` is the default for both roles.
+
+# Minibatch size for training loaders.  ``batch_size`` is the default for both roles.
 batch_size: 128
-# Server partition (objective f₁): override to differ from clients, e.g. smaller server shard.
-batch_size_server: ${batch_size}
+# Server partition (objective f₁): override to differ from clients (e.g. smaller server shard).
+batch_size_server: ${.batch_size}
 # Client partitions: minibatch for each client's local DataLoader.
-batch_size_data_clients: ${batch_size}
+batch_size_data_clients: ${.batch_size}
+
+# ── Optional learning-rate schedule for the inexact prox solver ──────
+# Multiplies ``prox_lr`` (and only ``prox_lr``) by a per-epoch factor.
+# Disabled by default.  Available kinds: "constant", "cosine", "step".
+prox_lr_schedule:
+  kind: constant
+  # cosine:        lr_t = max_lr * 0.5 * (1 + cos(pi * t / T_max))
+  t_max: ${algorithm.num_epochs}
+  min_factor: 0.01
+  # step:          lr_t = max_lr * gamma^(t // step_every)
+  step_every: 30
+  gamma: 0.1
 
 wandb:
   enabled: false

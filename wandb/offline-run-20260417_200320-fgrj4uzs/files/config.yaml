@@ -1,0 +1,113 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.10.20
+    cli_version: 0.25.1
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1776445400
+    t:
+      1:
+      - 1
+      - 35
+      - 41
+      - 50
+      2:
+      - 1
+      - 35
+      - 41
+      - 50
+      3:
+      - 2
+      - 4
+      - 13
+      - 15
+      - 16
+      - 42
+      4: 3.10.20
+      5: 0.25.1
+      13: linux-x86_64
+    e:
+      767urcqstlzje5bh7dpk38fnlgp8o42o:
+        os: Linux-5.15.0-139-generic-x86_64-with-glibc2.31
+        python: CPython 3.10.20
+        started_at: '2026-04-17T17:03:20.600041Z'
+        args:
+        - search=optuna
+        - runtime.wandb.enabled=true
+        program: /home/Xattta6bI4/similarity-sarah/main.py
+        code_path: main.py
+        code_path_local: main.py
+        git:
+          remote_url: git@github.com:Vladislav-Pov/similarity-sarah.git
+          commit: 0ccebb889210ff4fde92abfad70b4262b02493c1
+        root: /home/Xattta6bI4/similarity-sarah
+        host: opt-mipt
+        executable: /home/Xattta6bI4/miniconda3/envs/nfg_env/bin/python
+        writer_id: 767urcqstlzje5bh7dpk38fnlgp8o42o
+base:
+  desc: null
+  value:
+    algorithm:
+      name: batched_nfg_sarah
+      num_clients: 10
+      batch_size_clients: 1
+      theta: 0.01
+      num_epochs: 100
+      prox_num_steps: 8
+      prox_lr: 0.01
+    data:
+      name: cifar10
+      data_dir: ./data
+      val_fraction: 0.1
+    model:
+      name: resnet18_32x32
+      num_classes: 10
+    partition:
+      name: uniform
+    runtime:
+      device: auto
+      eval_every: 1
+      log_every: 1
+      num_workers: 2
+      batch_size: 128
+      batch_size_server: 128
+      batch_size_data_clients: 128
+      wandb:
+        enabled: true
+        project: similarity-sarah
+        entity: chirkov
+        group: null
+        tags: []
+        job_type: null
+        name: null
+    search:
+      enabled: true
+      method: optuna
+      max_epochs: 100
+      num_trials: 1
+      wandb_project: similarity-sarah
+      wandb_group: optuna-20260417-200319
+      shared:
+        batch_size_clients:
+        - 1
+        num_epochs: 100
+      batched_nfg_sarah:
+        theta:
+        - 0.02
+        prox_lr:
+        - 0.01
+        prox_num_steps:
+        - 12
+    seed: 42
+search_params:
+  desc: null
+  value:
+    shared.batch_size_clients: 1
+    shared.num_epochs: 100
+    batched_nfg_sarah.theta: 0.02
+    batched_nfg_sarah.prox_lr: 0.01
+    batched_nfg_sarah.prox_num_steps: 12

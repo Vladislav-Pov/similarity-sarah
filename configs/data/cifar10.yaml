@@ -1,3 +1,9 @@
 name: cifar10
 data_dir: ./data
 val_fraction: 0.1
+# Apply RandomCrop+HorizontalFlip on the *server* loader only.  Client
+# gradient computations stay deterministic so that ∇f_i(w) is well
+# defined.  The augmented server loader is only used inside the inexact
+# proximal SGD/Adam solver, where additional noise is harmless and
+# significantly improves generalisation on CIFAR-10.
+augment_server: true

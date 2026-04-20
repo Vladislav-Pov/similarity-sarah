@@ -1,18 +1,57 @@
 enabled: true
 method: optuna
-max_epochs: 150
-num_trials: 1
+max_epochs: 100
+num_trials: 30
 wandb_project: similarity-sarah
 wandb_group: "optuna-${now:%Y%m%d-%H%M%S}"
 
-shared:
-  batch_size_clients: [1]
-  num_epochs: 150
+# ── Sampler / pruner ─────────────────────────────────────────────────
+sampler:
+  kind: tpe                 # tpe | random
+  seed: 0
+pruner:
+  kind: median              # median | hyperband | none
+  n_startup_trials: 5
+  n_warmup_epochs: 5
+  interval_epochs: 1
 
-distributed_sarah:
-  lr: [0.01]
+# ── Search-space definitions ─────────────────────────────────────────
+# Each entry is a *range/choice spec* (NOT a list of fixed values), so
+# Optuna explores continuous hyper-parameter ranges rather than a grid.
+#
+# Spec types:
+#   {type: float, low:, high:, log: true|false}
+#   {type: int,   low:, high:, log: true|false}
+#   {type: categorical, choices: [...]}
+
+shared:
+  batch_size_clients:
+    type: int
+    low: 1
+    high: 4
 
 batched_nfg_sarah:
-  theta: [0.02]
-  prox_lr: [0.01]
-  prox_num_steps: [18]
+  theta:
+    type: float
+    low: 1.0e-3
+    high: 1.0e-1
+    log: true
+  prox_lr:
+    type: float
+    low: 1.0e-3
+    high: 2.0e-1
+    log: true
+  prox_num_steps:
+    type: int
+    low: 20
+    high: 200
+    log: true
+  prox_momentum:
+    type: float
+    low: 0.0
+    high: 0.95
+  prox_weight_decay:
+    type: float
+    low: 1.0e-6
+    high: 1.0e-3
+    log: true

@@ -1,0 +1,12 @@
+name: svrs
+
+num_clients: 10
+batch_size_clients: 1
+theta: 0.02
+num_epochs: 100
+
+prox_num_steps: 50
+prox_lr: 0.002
+prox_momentum: 0.9
+prox_weight_decay: 0.0
+prox_solver: sgd
