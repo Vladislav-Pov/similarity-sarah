@@ -1,9 +1,9 @@
-"""Distributed SARAH baseline with full-gradient computation.
+"""Distributed SARAH baseline with minibatch-gradient estimates.
 
-At the start of every epoch the server computes the exact global gradient
-(all nodes participate).  Inner steps then use a standard SARAH recursive
-correction with partial client sampling and a plain gradient-descent step
-(no proximal operator).
+At the start of every epoch the server aggregates one stochastic gradient per
+node (single minibatch per loader).  Inner steps use a SARAH-style correction
+with partial client sampling and a plain gradient-descent step (no proximal
+operator).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from similarity_sarah.utils import (
     ParamList,
     add_params_,
     clone_params,
-    compute_full_gradient,
+    compute_batch_gradient,
     get_params,
     set_params,
     zeros_like_params,
@@ -30,10 +30,10 @@ logger = logging.getLogger(__name__)
 
 
 class DistributedSARAH(BaseAlgorithm):
-    """Distributed SARAH with full gradient at epoch start.
+    """Distributed SARAH with per-node minibatch gradient at epoch start.
 
     Epoch structure:
-        v₀ = ∇f(w₀)  =  (1/n) Σᵢ ∇fᵢ(w₀)           ← all nodes
+        v₀ ≈ (1/n) Σᵢ ∇fᵢ(w₀)   (one minibatch per node)
         for t = 0 … K−1:
             w_{t+1} = wₜ − η·vₜ
             Δ_server = ∇f₁(w_{t+1}) − ∇f₁(wₜ)
@@ -81,7 +81,7 @@ class DistributedSARAH(BaseAlgorithm):
     def run_epoch(self, epoch: int) -> dict[str, float]:
         assert self.scheduler is not None
 
-        # ── full gradient at epoch start (all nodes) ────────────────
+        # ── global gradient estimate at epoch start (one batch per node) ─
         v = self._compute_global_gradient()
 
         batches = self.scheduler.get_epoch_batches()
@@ -95,14 +95,17 @@ class DistributedSARAH(BaseAlgorithm):
             w_new = [wo - self.lr * vi for wo, vi in zip(w_old, v)]
             set_params(self.model, w_new)
 
-            # ── server correction (always computed, local) ──────────
+            # ── server correction (same minibatch at w_new and w_old) ─
+            srv_xy = next(iter(self.server_loader))
             set_params(self.model, w_new)
-            grad_f1_new = compute_full_gradient(
+            grad_f1_new = compute_batch_gradient(
                 self.model, self.server_loader, self.loss_fn, self.device,
+                xy=srv_xy,
             )
             set_params(self.model, w_old)
-            grad_f1_old = compute_full_gradient(
+            grad_f1_old = compute_batch_gradient(
                 self.model, self.server_loader, self.loss_fn, self.device,
+                xy=srv_xy,
             )
             delta_server = [gn - go for gn, go in zip(grad_f1_new, grad_f1_old)]
 
@@ -110,15 +113,18 @@ class DistributedSARAH(BaseAlgorithm):
             B_size = len(batch)
             sum_delta_clients = zeros_like_params(self.model)
             for cid in batch:
+                cli_xy = next(iter(self.client_loaders[cid]))
                 set_params(self.model, w_new)
-                g_new = compute_full_gradient(
+                g_new = compute_batch_gradient(
                     self.model, self.client_loaders[cid],
                     self.loss_fn, self.device,
+                    xy=cli_xy,
                 )
                 set_params(self.model, w_old)
-                g_old = compute_full_gradient(
+                g_old = compute_batch_gradient(
                     self.model, self.client_loaders[cid],
                     self.loss_fn, self.device,
+                    xy=cli_xy,
                 )
                 for sd, gn, go in zip(sum_delta_clients, g_new, g_old):
                     sd.add_(gn - go)
@@ -135,17 +141,17 @@ class DistributedSARAH(BaseAlgorithm):
 
     # ------------------------------------------------------------------
     def _compute_global_gradient(self) -> ParamList:
-        """(1/n) Σᵢ₌₁ⁿ ∇fᵢ(w)  —  requires participation of every node."""
+        """(1/n) Σᵢ stochastic ∇fᵢ(w) — one minibatch per node."""
         n = self.total_nodes
         global_grad = zeros_like_params(self.model)
 
-        grad_server = compute_full_gradient(
+        grad_server = compute_batch_gradient(
             self.model, self.server_loader, self.loss_fn, self.device,
         )
         add_params_(global_grad, grad_server, alpha=1.0 / n)
 
         for loader in self.client_loaders:
-            g = compute_full_gradient(
+            g = compute_batch_gradient(
                 self.model, loader, self.loss_fn, self.device,
             )
             add_params_(global_grad, g, alpha=1.0 / n)

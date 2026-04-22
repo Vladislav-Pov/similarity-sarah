@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from similarity_sarah.utils import (
     add_params_,
     clone_params,
+    compute_batch_gradient,
     compute_full_gradient,
     get_params,
     set_params,
@@ -60,3 +61,35 @@ def test_compute_full_gradient():
 
     for gf, gs in zip(g_full, g_split):
         assert torch.allclose(gf, gs, atol=1e-6)
+
+
+def test_compute_batch_gradient_matches_full_when_single_minibatch():
+    """One batch covering the dataset → batch grad equals full-data grad."""
+    torch.manual_seed(0)
+    m = nn.Linear(4, 2, bias=True)
+    x = torch.randn(4, 4)
+    y = torch.randint(0, 2, (4,))
+    ds = TensorDataset(x, y)
+    loader = DataLoader(ds, batch_size=4, shuffle=False)
+    loss_fn = nn.CrossEntropyLoss()
+
+    g_batch = compute_batch_gradient(m, loader, loss_fn, torch.device("cpu"))
+    g_full = compute_full_gradient(m, loader, loss_fn, torch.device("cpu"))
+
+    for gb, gf in zip(g_batch, g_full):
+        assert torch.allclose(gb, gf, atol=1e-6)
+
+
+def test_compute_batch_gradient_xy_matches_drawn_batch():
+    torch.manual_seed(1)
+    m = nn.Linear(4, 2, bias=True)
+    x = torch.randn(8, 4)
+    y = torch.randint(0, 2, (8,))
+    ds = TensorDataset(x, y)
+    loader = DataLoader(ds, batch_size=4, shuffle=False)
+    loss_fn = nn.CrossEntropyLoss()
+    xy = next(iter(loader))
+    g1 = compute_batch_gradient(m, loader, loss_fn, torch.device("cpu"), xy=xy)
+    g2 = compute_batch_gradient(m, loader, loss_fn, torch.device("cpu"))
+    for a, b in zip(g1, g2):
+        assert torch.allclose(a, b, atol=1e-6)

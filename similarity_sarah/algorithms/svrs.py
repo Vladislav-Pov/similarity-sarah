@@ -34,7 +34,7 @@ from similarity_sarah.utils import (
     ParamList,
     add_params_,
     clone_params,
-    compute_full_gradient,
+    compute_batch_gradient,
     compute_param_norm,
     get_params,
     set_params,
@@ -97,11 +97,11 @@ class SVRS(BaseAlgorithm):
         n = self.total_nodes
         set_params(self.model, self._w_ref)
         g_ref = zeros_like_params(self.model)
-        grad_f1 = compute_full_gradient(
+        grad_f1 = compute_batch_gradient(
             self.model, self.server_loader, self.loss_fn, self.device,
         )
         for loader in self.client_loaders:
-            g = compute_full_gradient(
+            g = compute_batch_gradient(
                 self.model, loader, self.loss_fn, self.device,
             )
             for tg, gi, g1 in zip(g_ref, g, grad_f1):
@@ -125,12 +125,12 @@ class SVRS(BaseAlgorithm):
             w_curr = get_params(self.model)
 
             # ── stochastic similarity correction at w_t ──────────────
-            grad_f1_curr = compute_full_gradient(
+            grad_f1_curr = compute_batch_gradient(
                 self.model, self.server_loader, self.loss_fn, self.device,
             )
             sum_diff_curr = zeros_like_params(self.model)
             for cid in batch:
-                g_curr = compute_full_gradient(
+                g_curr = compute_batch_gradient(
                     self.model, self.client_loaders[cid],
                     self.loss_fn, self.device,
                 )
@@ -138,12 +138,12 @@ class SVRS(BaseAlgorithm):
                     sd.add_(gc - g1)
 
             set_params(self.model, self._w_ref)
-            grad_f1_ref = compute_full_gradient(
+            grad_f1_ref = compute_batch_gradient(
                 self.model, self.server_loader, self.loss_fn, self.device,
             )
             sum_diff_ref = zeros_like_params(self.model)
             for cid in batch:
-                g_ref_b = compute_full_gradient(
+                g_ref_b = compute_batch_gradient(
                     self.model, self.client_loaders[cid],
                     self.loss_fn, self.device,
                 )

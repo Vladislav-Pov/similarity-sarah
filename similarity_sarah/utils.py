@@ -106,3 +106,32 @@ def compute_full_gradient(
         tg.div_(total_samples)
 
     return total_grad
+
+
+def compute_batch_gradient(
+    model: nn.Module,
+    loader: DataLoader,
+    loss_fn: nn.Module,
+    device: torch.device,
+    *,
+    xy: tuple[torch.Tensor, torch.Tensor] | None = None,
+) -> ParamList:
+    """Mean gradient of *loss_fn* over a single minibatch.
+
+    If *xy* is ``None``, uses the first batch from ``iter(loader)`` (random
+    minibatch when ``shuffle=True``).  Otherwise computes the gradient on the
+    given ``(x, y)`` tensors — use this when two evaluations at different
+    parameters must share the same samples (e.g. gradient differences).
+
+    Expects *loss_fn* to reduce the batch to a scalar (e.g. default
+    ``CrossEntropyLoss``).
+    """
+    params = list(model.parameters())
+    if xy is None:
+        x, y = next(iter(loader))
+    else:
+        x, y = xy
+    x, y = x.to(device), y.to(device)
+    output = model(x)
+    loss = loss_fn(output, y)
+    return list(torch.autograd.grad(loss, params))

@@ -1,16 +1,20 @@
 enabled: true
 method: grid
-max_epochs: 75
-num_trials: 24
+max_epochs: 100
+num_trials: 100
 wandb_project: similarity-sarah
 wandb_group: "grid-${now:%Y%m%d-%H%M%S}"
 
 shared:
-  batch_size_clients: [1, 2, 4]
+  batch_size_clients: [1]
 
 batched_nfg_sarah:
-  theta: [0.01, 0.05, 0.1]
-  prox_lr: [0.01, 0.05]
-  prox_num_steps: [50, 100]
+  theta: [0.001, 0.005, 0.01, 0.05]
+  prox_lr: [0.001, 0.005, 0.01, 0.05]
+  prox_num_steps: [100]
   prox_momentum: [0.9]
   prox_weight_decay: [5.0e-4]
+
+# When present, each trial trains *both* algorithms sequentially (runner).
+svrs:
+  theta: [0.001, 0.005, 0.01, 0.05]

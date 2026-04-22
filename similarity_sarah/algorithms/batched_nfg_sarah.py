@@ -26,9 +26,9 @@ Implements *Batched No Full Grad SARAH* (Algorithm 1):
         tilde_v_1^{(s+1)} = 0
         v^{(s+1)}        = tilde_v_{K+1}^{(s)}
 
-The implementation follows the pseudocode line-by-line.  All gradients are
-computed deterministically (full pass over the corresponding partition),
-ensuring that ∇f_i(w) is well-defined for every client i.
+The implementation follows the pseudocode line-by-line.  Per-node gradients
+use a single minibatch from each :class:`~torch.utils.data.DataLoader`
+(stochastic oracle) instead of a full pass over the partition.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ from similarity_sarah.utils import (
     ParamList,
     add_params_,
     clone_params,
-    compute_full_gradient,
+    compute_batch_gradient,
     compute_param_norm,
     diff_param_norm,
     get_params,
@@ -123,15 +123,15 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         """Σ_{i ∈ batch} ∇f_i(w) at the current model state."""
         acc = zeros_like_params(self.model)
         for cid in client_ids:
-            g = compute_full_gradient(
+            g = compute_batch_gradient(
                 self.model, self.client_loaders[cid],
                 self.loss_fn, self.device,
             )
             add_params_(acc, g)
         return acc
 
-    def _server_full_grad(self) -> ParamList:
-        return compute_full_gradient(
+    def _server_batch_grad(self) -> ParamList:
+        return compute_batch_gradient(
             self.model, self.server_loader, self.loss_fn, self.device,
         )
 
@@ -152,7 +152,7 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
 
         # Cache w_0 and ∇f₁(w_0) for the upcoming inner-loop differences.
         w_prev = get_params(self.model)
-        grad_f1_prev = self._server_full_grad()
+        grad_f1_prev = self._server_batch_grad()
 
         # w_1^{(s)} = prox_{θ f₁}( w_0^{(s)} − θ · v_0^{(s)} )
         prox_diag_first = self.prox_solver.step(
@@ -172,7 +172,7 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             w_curr = get_params(self.model)  # = w_t^{(s)}
 
             # ── gradients at w_t (model is already at w_t) ───────────
-            grad_f1_curr = self._server_full_grad()
+            grad_f1_curr = self._server_batch_grad()
             sum_client_grads_curr = self._client_grad_sum(batch)
 
             # ── gradients at w_{t-1} ─────────────────────────────────

@@ -154,17 +154,25 @@ class GridSearch:
         self.base_cfg = base_cfg
 
     def _iter_trials(self) -> Iterator[dict[str, object]]:
-        shared_grid = _grid(_coerce_dict(getattr(self.cfg, "shared", None)))
-        batched_grid = _grid(
-            _coerce_dict(getattr(self.cfg, "batched_nfg_sarah", None)),
+        # Materialise grids — ``_grid`` returns one-shot iterators and nested
+        # loops would exhaust inner iterators after the first outer step.
+        shared_grid = list(_grid(_coerce_dict(getattr(self.cfg, "shared", None))))
+        batched_grid = list(
+            _grid(_coerce_dict(getattr(self.cfg, "batched_nfg_sarah", None))),
         )
+        if "svrs" in self.cfg and self.cfg.svrs is not None:
+            svrs_grid = list(_grid(_coerce_dict(self.cfg.svrs)))
+        else:
+            svrs_grid = [{}]
 
         for shared_params in shared_grid:
             for batched_params in batched_grid:
-                params = {}
-                params.update(_join_params("shared", shared_params))
-                params.update(_join_params("batched_nfg_sarah", batched_params))
-                yield params
+                for svrs_params in svrs_grid:
+                    params: dict[str, object] = {}
+                    params.update(_join_params("shared", shared_params))
+                    params.update(_join_params("batched_nfg_sarah", batched_params))
+                    params.update(_join_params("svrs", svrs_params))
+                    yield params
 
     def run(
         self,
@@ -294,29 +302,50 @@ def _build_trial_cfgs(
     search_cfg: DictConfig,
     params: Mapping[str, object],
 ) -> dict[str, DictConfig]:
+    max_epochs = int(search_cfg.max_epochs)
     base_algo = OmegaConf.create(
         OmegaConf.to_container(base_cfg.algorithm, resolve=True),
     )
-    batched_cfg = OmegaConf.merge(
-        _algorithm_yaml_defaults("batched_nfg_sarah"), base_algo,
-    )
 
-    batched_cfg.name = "batched_nfg_sarah"
-
+    shared: dict[str, object] = {}
+    batched_over: dict[str, object] = {}
+    svrs_over: dict[str, object] = {}
     for key, value in params.items():
         v = _to_python(value)
         if key.startswith("shared."):
-            shared_key = key.split(".", 1)[1]
-            batched_cfg[shared_key] = v
+            shared[key.split(".", 1)[1]] = v
         elif key.startswith("batched_nfg_sarah."):
-            batched_cfg[key.split(".", 1)[1]] = v
+            batched_over[key.split(".", 1)[1]] = v
+        elif key.startswith("svrs."):
+            svrs_over[key.split(".", 1)[1]] = v
 
-    max_epochs = int(search_cfg.max_epochs)
+    batched_cfg = OmegaConf.merge(
+        _algorithm_yaml_defaults("batched_nfg_sarah"), base_algo,
+    )
+    batched_cfg.name = "batched_nfg_sarah"
+    for k, v in shared.items():
+        batched_cfg[k] = v
+    for k, v in batched_over.items():
+        batched_cfg[k] = v
     batched_cfg.num_epochs = min(int(batched_cfg.num_epochs), max_epochs)
 
-    return {
+    out: dict[str, DictConfig] = {
         "batched_nfg_sarah": _override_algorithm(base_cfg, batched_cfg),
     }
+
+    if "svrs" in search_cfg and search_cfg.svrs is not None:
+        svrs_cfg = OmegaConf.merge(
+            _algorithm_yaml_defaults("svrs"), OmegaConf.create(),
+        )
+        svrs_cfg.name = "svrs"
+        for k, v in shared.items():
+            svrs_cfg[k] = v
+        for k, v in svrs_over.items():
+            svrs_cfg[k] = v
+        svrs_cfg.num_epochs = min(int(svrs_cfg.num_epochs), max_epochs)
+        out["svrs"] = _override_algorithm(base_cfg, svrs_cfg)
+
+    return out
 
 
 def _sample_optuna_params(
@@ -336,6 +365,15 @@ def _sample_optuna_params(
         getattr(search_cfg, "batched_nfg_sarah", None),
     ).items():
         full_name = f"batched_nfg_sarah.{name}"
+        if _is_range_spec(value):
+            params[full_name] = _suggest_from_spec(trial, full_name, value)
+        else:
+            params[full_name] = trial.suggest_categorical(full_name, _as_list(value))
+
+    for name, value in _coerce_dict(
+        getattr(search_cfg, "svrs", None),
+    ).items():
+        full_name = f"svrs.{name}"
         if _is_range_spec(value):
             params[full_name] = _suggest_from_spec(trial, full_name, value)
         else:

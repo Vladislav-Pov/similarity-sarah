@@ -1,0 +1,497 @@
+diff --git a/configs/algorithm/batched_nfg_sarah.yaml b/configs/algorithm/batched_nfg_sarah.yaml
+index 0640b84..6848165 100644
+--- a/configs/algorithm/batched_nfg_sarah.yaml
++++ b/configs/algorithm/batched_nfg_sarah.yaml
+@@ -10,7 +10,7 @@ num_epochs: 100
+ # Default is SGD with Nesterov-like Polyak momentum + small weight decay,
+ # which dramatically improves the inner-prox convergence on deep nets and
+ # is the main reason the model can reach >0.9 accuracy on CIFAR-10.
+-prox_solver: sgd
++prox_solver: adam
+ prox_num_steps: 100
+ prox_lr: 0.05
+ prox_momentum: 0.9
+diff --git a/configs/search/grid.yaml b/configs/search/grid.yaml
+index 6bb48f3..de37b10 100644
+--- a/configs/search/grid.yaml
++++ b/configs/search/grid.yaml
+@@ -1,16 +1,20 @@
+ enabled: true
+ method: grid
+-max_epochs: 75
++max_epochs: 100
+ num_trials: 24
+ wandb_project: similarity-sarah
+ wandb_group: "grid-${now:%Y%m%d-%H%M%S}"
+ 
+ shared:
+-  batch_size_clients: [1, 2, 4]
++  batch_size_clients: [1]
+ 
+ batched_nfg_sarah:
+-  theta: [0.01, 0.05, 0.1]
+-  prox_lr: [0.01, 0.05]
+-  prox_num_steps: [50, 100]
++  theta: [0.001, 0.005, 0.01, 0.05]
++  prox_lr: [0.001, 0.005, 0.01, 0.05]
++  prox_num_steps: [100]
+   prox_momentum: [0.9]
+   prox_weight_decay: [5.0e-4]
++
++# When present, each trial trains *both* algorithms sequentially (runner).
++svrs:
++  theta: [0.001, 0.005, 0.01, 0.05]
+diff --git a/similarity_sarah/algorithms/batched_nfg_sarah.py b/similarity_sarah/algorithms/batched_nfg_sarah.py
+index a0fe0c5..6ebb4ae 100644
+--- a/similarity_sarah/algorithms/batched_nfg_sarah.py
++++ b/similarity_sarah/algorithms/batched_nfg_sarah.py
+@@ -26,9 +26,9 @@ Implements *Batched No Full Grad SARAH* (Algorithm 1):
+         tilde_v_1^{(s+1)} = 0
+         v^{(s+1)}        = tilde_v_{K+1}^{(s)}
+ 
+-The implementation follows the pseudocode line-by-line.  All gradients are
+-computed deterministically (full pass over the corresponding partition),
+-ensuring that ∇f_i(w) is well-defined for every client i.
++The implementation follows the pseudocode line-by-line.  Per-node gradients
++use a single minibatch from each :class:`~torch.utils.data.DataLoader`
++(stochastic oracle) instead of a full pass over the partition.
+ """
+ 
+ from __future__ import annotations
+@@ -46,7 +46,7 @@ from similarity_sarah.utils import (
+     ParamList,
+     add_params_,
+     clone_params,
+-    compute_full_gradient,
++    compute_batch_gradient,
+     compute_param_norm,
+     diff_param_norm,
+     get_params,
+@@ -123,15 +123,15 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
+         """Σ_{i ∈ batch} ∇f_i(w) at the current model state."""
+         acc = zeros_like_params(self.model)
+         for cid in client_ids:
+-            g = compute_full_gradient(
++            g = compute_batch_gradient(
+                 self.model, self.client_loaders[cid],
+                 self.loss_fn, self.device,
+             )
+             add_params_(acc, g)
+         return acc
+ 
+-    def _server_full_grad(self) -> ParamList:
+-        return compute_full_gradient(
++    def _server_batch_grad(self) -> ParamList:
++        return compute_batch_gradient(
+             self.model, self.server_loader, self.loss_fn, self.device,
+         )
+ 
+@@ -152,7 +152,7 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
+ 
+         # Cache w_0 and ∇f₁(w_0) for the upcoming inner-loop differences.
+         w_prev = get_params(self.model)
+-        grad_f1_prev = self._server_full_grad()
++        grad_f1_prev = self._server_batch_grad()
+ 
+         # w_1^{(s)} = prox_{θ f₁}( w_0^{(s)} − θ · v_0^{(s)} )
+         prox_diag_first = self.prox_solver.step(
+@@ -172,7 +172,7 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
+             w_curr = get_params(self.model)  # = w_t^{(s)}
+ 
+             # ── gradients at w_t (model is already at w_t) ───────────
+-            grad_f1_curr = self._server_full_grad()
++            grad_f1_curr = self._server_batch_grad()
+             sum_client_grads_curr = self._client_grad_sum(batch)
+ 
+             # ── gradients at w_{t-1} ─────────────────────────────────
+diff --git a/similarity_sarah/algorithms/distributed_sarah.py b/similarity_sarah/algorithms/distributed_sarah.py
+index 5d00fdc..8886cfe 100644
+--- a/similarity_sarah/algorithms/distributed_sarah.py
++++ b/similarity_sarah/algorithms/distributed_sarah.py
+@@ -1,9 +1,9 @@
+-"""Distributed SARAH baseline with full-gradient computation.
++"""Distributed SARAH baseline with minibatch-gradient estimates.
+ 
+-At the start of every epoch the server computes the exact global gradient
+-(all nodes participate).  Inner steps then use a standard SARAH recursive
+-correction with partial client sampling and a plain gradient-descent step
+-(no proximal operator).
++At the start of every epoch the server aggregates one stochastic gradient per
++node (single minibatch per loader).  Inner steps use a SARAH-style correction
++with partial client sampling and a plain gradient-descent step (no proximal
++operator).
+ """
+ 
+ from __future__ import annotations
+@@ -20,7 +20,7 @@ from similarity_sarah.utils import (
+     ParamList,
+     add_params_,
+     clone_params,
+-    compute_full_gradient,
++    compute_batch_gradient,
+     get_params,
+     set_params,
+     zeros_like_params,
+@@ -30,10 +30,10 @@ logger = logging.getLogger(__name__)
+ 
+ 
+ class DistributedSARAH(BaseAlgorithm):
+-    """Distributed SARAH with full gradient at epoch start.
++    """Distributed SARAH with per-node minibatch gradient at epoch start.
+ 
+     Epoch structure:
+-        v₀ = ∇f(w₀)  =  (1/n) Σᵢ ∇fᵢ(w₀)           ← all nodes
++        v₀ ≈ (1/n) Σᵢ ∇fᵢ(w₀)   (one minibatch per node)
+         for t = 0 … K−1:
+             w_{t+1} = wₜ − η·vₜ
+             Δ_server = ∇f₁(w_{t+1}) − ∇f₁(wₜ)
+@@ -81,7 +81,7 @@ class DistributedSARAH(BaseAlgorithm):
+     def run_epoch(self, epoch: int) -> dict[str, float]:
+         assert self.scheduler is not None
+ 
+-        # ── full gradient at epoch start (all nodes) ────────────────
++        # ── global gradient estimate at epoch start (one batch per node) ─
+         v = self._compute_global_gradient()
+ 
+         batches = self.scheduler.get_epoch_batches()
+@@ -95,14 +95,17 @@ class DistributedSARAH(BaseAlgorithm):
+             w_new = [wo - self.lr * vi for wo, vi in zip(w_old, v)]
+             set_params(self.model, w_new)
+ 
+-            # ── server correction (always computed, local) ──────────
++            # ── server correction (same minibatch at w_new and w_old) ─
++            srv_xy = next(iter(self.server_loader))
+             set_params(self.model, w_new)
+-            grad_f1_new = compute_full_gradient(
++            grad_f1_new = compute_batch_gradient(
+                 self.model, self.server_loader, self.loss_fn, self.device,
++                xy=srv_xy,
+             )
+             set_params(self.model, w_old)
+-            grad_f1_old = compute_full_gradient(
++            grad_f1_old = compute_batch_gradient(
+                 self.model, self.server_loader, self.loss_fn, self.device,
++                xy=srv_xy,
+             )
+             delta_server = [gn - go for gn, go in zip(grad_f1_new, grad_f1_old)]
+ 
+@@ -110,15 +113,18 @@ class DistributedSARAH(BaseAlgorithm):
+             B_size = len(batch)
+             sum_delta_clients = zeros_like_params(self.model)
+             for cid in batch:
++                cli_xy = next(iter(self.client_loaders[cid]))
+                 set_params(self.model, w_new)
+-                g_new = compute_full_gradient(
++                g_new = compute_batch_gradient(
+                     self.model, self.client_loaders[cid],
+                     self.loss_fn, self.device,
++                    xy=cli_xy,
+                 )
+                 set_params(self.model, w_old)
+-                g_old = compute_full_gradient(
++                g_old = compute_batch_gradient(
+                     self.model, self.client_loaders[cid],
+                     self.loss_fn, self.device,
++                    xy=cli_xy,
+                 )
+                 for sd, gn, go in zip(sum_delta_clients, g_new, g_old):
+                     sd.add_(gn - go)
+@@ -135,17 +141,17 @@ class DistributedSARAH(BaseAlgorithm):
+ 
+     # ------------------------------------------------------------------
+     def _compute_global_gradient(self) -> ParamList:
+-        """(1/n) Σᵢ₌₁ⁿ ∇fᵢ(w)  —  requires participation of every node."""
++        """(1/n) Σᵢ stochastic ∇fᵢ(w) — one minibatch per node."""
+         n = self.total_nodes
+         global_grad = zeros_like_params(self.model)
+ 
+-        grad_server = compute_full_gradient(
++        grad_server = compute_batch_gradient(
+             self.model, self.server_loader, self.loss_fn, self.device,
+         )
+         add_params_(global_grad, grad_server, alpha=1.0 / n)
+ 
+         for loader in self.client_loaders:
+-            g = compute_full_gradient(
++            g = compute_batch_gradient(
+                 self.model, loader, self.loss_fn, self.device,
+             )
+             add_params_(global_grad, g, alpha=1.0 / n)
+diff --git a/similarity_sarah/algorithms/svrs.py b/similarity_sarah/algorithms/svrs.py
+index 289ef65..db8dfeb 100644
+--- a/similarity_sarah/algorithms/svrs.py
++++ b/similarity_sarah/algorithms/svrs.py
+@@ -34,7 +34,7 @@ from similarity_sarah.utils import (
+     ParamList,
+     add_params_,
+     clone_params,
+-    compute_full_gradient,
++    compute_batch_gradient,
+     compute_param_norm,
+     get_params,
+     set_params,
+@@ -97,11 +97,11 @@ class SVRS(BaseAlgorithm):
+         n = self.total_nodes
+         set_params(self.model, self._w_ref)
+         g_ref = zeros_like_params(self.model)
+-        grad_f1 = compute_full_gradient(
++        grad_f1 = compute_batch_gradient(
+             self.model, self.server_loader, self.loss_fn, self.device,
+         )
+         for loader in self.client_loaders:
+-            g = compute_full_gradient(
++            g = compute_batch_gradient(
+                 self.model, loader, self.loss_fn, self.device,
+             )
+             for tg, gi, g1 in zip(g_ref, g, grad_f1):
+@@ -125,12 +125,12 @@ class SVRS(BaseAlgorithm):
+             w_curr = get_params(self.model)
+ 
+             # ── stochastic similarity correction at w_t ──────────────
+-            grad_f1_curr = compute_full_gradient(
++            grad_f1_curr = compute_batch_gradient(
+                 self.model, self.server_loader, self.loss_fn, self.device,
+             )
+             sum_diff_curr = zeros_like_params(self.model)
+             for cid in batch:
+-                g_curr = compute_full_gradient(
++                g_curr = compute_batch_gradient(
+                     self.model, self.client_loaders[cid],
+                     self.loss_fn, self.device,
+                 )
+@@ -138,12 +138,12 @@ class SVRS(BaseAlgorithm):
+                     sd.add_(gc - g1)
+ 
+             set_params(self.model, self._w_ref)
+-            grad_f1_ref = compute_full_gradient(
++            grad_f1_ref = compute_batch_gradient(
+                 self.model, self.server_loader, self.loss_fn, self.device,
+             )
+             sum_diff_ref = zeros_like_params(self.model)
+             for cid in batch:
+-                g_ref_b = compute_full_gradient(
++                g_ref_b = compute_batch_gradient(
+                     self.model, self.client_loaders[cid],
+                     self.loss_fn, self.device,
+                 )
+diff --git a/similarity_sarah/runtime/runner.py b/similarity_sarah/runtime/runner.py
+index 20df192..8c4b2da 100644
+--- a/similarity_sarah/runtime/runner.py
++++ b/similarity_sarah/runtime/runner.py
+@@ -46,6 +46,7 @@ _WANDB_PARAM_ABBREV: dict[str, str] = {
+     "batched_nfg_sarah.prox_num_steps": "pns",
+     "batched_nfg_sarah.prox_momentum": "pmom",
+     "batched_nfg_sarah.prox_weight_decay": "pwd",
++    "svrs.theta": "svth",
+ }
+ 
+ 
+diff --git a/similarity_sarah/runtime/search.py b/similarity_sarah/runtime/search.py
+index 48f301b..09be73a 100644
+--- a/similarity_sarah/runtime/search.py
++++ b/similarity_sarah/runtime/search.py
+@@ -154,17 +154,25 @@ class GridSearch:
+         self.base_cfg = base_cfg
+ 
+     def _iter_trials(self) -> Iterator[dict[str, object]]:
+-        shared_grid = _grid(_coerce_dict(getattr(self.cfg, "shared", None)))
+-        batched_grid = _grid(
+-            _coerce_dict(getattr(self.cfg, "batched_nfg_sarah", None)),
++        # Materialise grids — ``_grid`` returns one-shot iterators and nested
++        # loops would exhaust inner iterators after the first outer step.
++        shared_grid = list(_grid(_coerce_dict(getattr(self.cfg, "shared", None))))
++        batched_grid = list(
++            _grid(_coerce_dict(getattr(self.cfg, "batched_nfg_sarah", None))),
+         )
++        if "svrs" in self.cfg and self.cfg.svrs is not None:
++            svrs_grid = list(_grid(_coerce_dict(self.cfg.svrs)))
++        else:
++            svrs_grid = [{}]
+ 
+         for shared_params in shared_grid:
+             for batched_params in batched_grid:
+-                params = {}
+-                params.update(_join_params("shared", shared_params))
+-                params.update(_join_params("batched_nfg_sarah", batched_params))
+-                yield params
++                for svrs_params in svrs_grid:
++                    params: dict[str, object] = {}
++                    params.update(_join_params("shared", shared_params))
++                    params.update(_join_params("batched_nfg_sarah", batched_params))
++                    params.update(_join_params("svrs", svrs_params))
++                    yield params
+ 
+     def run(
+         self,
+@@ -294,30 +302,51 @@ def _build_trial_cfgs(
+     search_cfg: DictConfig,
+     params: Mapping[str, object],
+ ) -> dict[str, DictConfig]:
++    max_epochs = int(search_cfg.max_epochs)
+     base_algo = OmegaConf.create(
+         OmegaConf.to_container(base_cfg.algorithm, resolve=True),
+     )
+-    batched_cfg = OmegaConf.merge(
+-        _algorithm_yaml_defaults("batched_nfg_sarah"), base_algo,
+-    )
+-
+-    batched_cfg.name = "batched_nfg_sarah"
+ 
++    shared: dict[str, object] = {}
++    batched_over: dict[str, object] = {}
++    svrs_over: dict[str, object] = {}
+     for key, value in params.items():
+         v = _to_python(value)
+         if key.startswith("shared."):
+-            shared_key = key.split(".", 1)[1]
+-            batched_cfg[shared_key] = v
++            shared[key.split(".", 1)[1]] = v
+         elif key.startswith("batched_nfg_sarah."):
+-            batched_cfg[key.split(".", 1)[1]] = v
++            batched_over[key.split(".", 1)[1]] = v
++        elif key.startswith("svrs."):
++            svrs_over[key.split(".", 1)[1]] = v
+ 
+-    max_epochs = int(search_cfg.max_epochs)
++    batched_cfg = OmegaConf.merge(
++        _algorithm_yaml_defaults("batched_nfg_sarah"), base_algo,
++    )
++    batched_cfg.name = "batched_nfg_sarah"
++    for k, v in shared.items():
++        batched_cfg[k] = v
++    for k, v in batched_over.items():
++        batched_cfg[k] = v
+     batched_cfg.num_epochs = min(int(batched_cfg.num_epochs), max_epochs)
+ 
+-    return {
++    out: dict[str, DictConfig] = {
+         "batched_nfg_sarah": _override_algorithm(base_cfg, batched_cfg),
+     }
+ 
++    if "svrs" in search_cfg and search_cfg.svrs is not None:
++        svrs_cfg = OmegaConf.merge(
++            _algorithm_yaml_defaults("svrs"), OmegaConf.create(),
++        )
++        svrs_cfg.name = "svrs"
++        for k, v in shared.items():
++            svrs_cfg[k] = v
++        for k, v in svrs_over.items():
++            svrs_cfg[k] = v
++        svrs_cfg.num_epochs = min(int(svrs_cfg.num_epochs), max_epochs)
++        out["svrs"] = _override_algorithm(base_cfg, svrs_cfg)
++
++    return out
++
+ 
+ def _sample_optuna_params(
+     trial: "optuna.Trial",
+@@ -341,6 +370,15 @@ def _sample_optuna_params(
+         else:
+             params[full_name] = trial.suggest_categorical(full_name, _as_list(value))
+ 
++    for name, value in _coerce_dict(
++        getattr(search_cfg, "svrs", None),
++    ).items():
++        full_name = f"svrs.{name}"
++        if _is_range_spec(value):
++            params[full_name] = _suggest_from_spec(trial, full_name, value)
++        else:
++            params[full_name] = trial.suggest_categorical(full_name, _as_list(value))
++
+     return params
+ 
+ 
+diff --git a/similarity_sarah/utils.py b/similarity_sarah/utils.py
+index 24b0de8..a4f10f4 100644
+--- a/similarity_sarah/utils.py
++++ b/similarity_sarah/utils.py
+@@ -106,3 +106,32 @@ def compute_full_gradient(
+         tg.div_(total_samples)
+ 
+     return total_grad
++
++
++def compute_batch_gradient(
++    model: nn.Module,
++    loader: DataLoader,
++    loss_fn: nn.Module,
++    device: torch.device,
++    *,
++    xy: tuple[torch.Tensor, torch.Tensor] | None = None,
++) -> ParamList:
++    """Mean gradient of *loss_fn* over a single minibatch.
++
++    If *xy* is ``None``, uses the first batch from ``iter(loader)`` (random
++    minibatch when ``shuffle=True``).  Otherwise computes the gradient on the
++    given ``(x, y)`` tensors — use this when two evaluations at different
++    parameters must share the same samples (e.g. gradient differences).
++
++    Expects *loss_fn* to reduce the batch to a scalar (e.g. default
++    ``CrossEntropyLoss``).
++    """
++    params = list(model.parameters())
++    if xy is None:
++        x, y = next(iter(loader))
++    else:
++        x, y = xy
++    x, y = x.to(device), y.to(device)
++    output = model(x)
++    loss = loss_fn(output, y)
++    return list(torch.autograd.grad(loss, params))
+diff --git a/tests/test_utils.py b/tests/test_utils.py
+index 90ba599..594dd10 100644
+--- a/tests/test_utils.py
++++ b/tests/test_utils.py
+@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
+ from similarity_sarah.utils import (
+     add_params_,
+     clone_params,
++    compute_batch_gradient,
+     compute_full_gradient,
+     get_params,
+     set_params,
+@@ -60,3 +61,35 @@ def test_compute_full_gradient():
+ 
+     for gf, gs in zip(g_full, g_split):
+         assert torch.allclose(gf, gs, atol=1e-6)
++
++
++def test_compute_batch_gradient_matches_full_when_single_minibatch():
++    """One batch covering the dataset → batch grad equals full-data grad."""
++    torch.manual_seed(0)
++    m = nn.Linear(4, 2, bias=True)
++    x = torch.randn(4, 4)
++    y = torch.randint(0, 2, (4,))
++    ds = TensorDataset(x, y)
++    loader = DataLoader(ds, batch_size=4, shuffle=False)
++    loss_fn = nn.CrossEntropyLoss()
++
++    g_batch = compute_batch_gradient(m, loader, loss_fn, torch.device("cpu"))
++    g_full = compute_full_gradient(m, loader, loss_fn, torch.device("cpu"))
++
++    for gb, gf in zip(g_batch, g_full):
++        assert torch.allclose(gb, gf, atol=1e-6)
++
++
++def test_compute_batch_gradient_xy_matches_drawn_batch():
++    torch.manual_seed(1)
++    m = nn.Linear(4, 2, bias=True)
++    x = torch.randn(8, 4)
++    y = torch.randint(0, 2, (8,))
++    ds = TensorDataset(x, y)
++    loader = DataLoader(ds, batch_size=4, shuffle=False)
++    loss_fn = nn.CrossEntropyLoss()
++    xy = next(iter(loader))
++    g1 = compute_batch_gradient(m, loader, loss_fn, torch.device("cpu"), xy=xy)
++    g2 = compute_batch_gradient(m, loader, loss_fn, torch.device("cpu"))
++    for a, b in zip(g1, g2):
++        assert torch.allclose(a, b, atol=1e-6)
+diff --git a/wandb/latest-run b/wandb/latest-run
+index a1549c6..814ef1a 120000
+--- a/wandb/latest-run
++++ b/wandb/latest-run
+@@ -1 +1 @@
+-offline-run-20260420_110437-s21kve4u
+\ No newline at end of file
++run-20260422_103043-e4p82sd0
+\ No newline at end of file

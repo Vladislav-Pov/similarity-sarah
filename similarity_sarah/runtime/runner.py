@@ -46,6 +46,7 @@ _WANDB_PARAM_ABBREV: dict[str, str] = {
     "batched_nfg_sarah.prox_num_steps": "pns",
     "batched_nfg_sarah.prox_momentum": "pmom",
     "batched_nfg_sarah.prox_weight_decay": "pwd",
+    "svrs.theta": "svth",
 }
 
 
