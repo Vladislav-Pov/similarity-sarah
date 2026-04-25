@@ -26,9 +26,13 @@ Implements *Batched No Full Grad SARAH* (Algorithm 1):
         tilde_v_1^{(s+1)} = 0
         v^{(s+1)}        = tilde_v_{K+1}^{(s)}
 
-The implementation follows the pseudocode line-by-line.  Per-node gradients
-use a single minibatch from each :class:`~torch.utils.data.DataLoader`
-(stochastic oracle) instead of a full pass over the partition.
+Within one inner step the *same* minibatch is reused at ``w_t`` and
+``w_{t-1}`` for every client and for the server, so that the SARAH
+difference ∇(f_i − f₁)(w_t) − ∇(f_i − f₁)(w_{t-1}) actually telescopes
+(otherwise the recursion becomes a noisy SGD estimator with no variance
+reduction).  Concretely, we pre-sample one ``srv_xy`` from the server's
+*gradient* loader and one ``cli_xy[cid]`` per client in the batch, then
+evaluate all four gradient quantities on those fixed tensors.
 """
 
 from __future__ import annotations
@@ -41,7 +45,7 @@ from torch.utils.data import DataLoader
 
 from similarity_sarah.algorithms.base import BaseAlgorithm
 from similarity_sarah.runtime.prox_solver import ProxSolver
-from similarity_sarah.runtime.scheduler import ClientBatchScheduler
+from similarity_sarah.runtime.scheduler import sample_client_batches
 from similarity_sarah.utils import (
     ParamList,
     add_params_,
@@ -61,8 +65,9 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
     """Batched No Full Grad SARAH.
 
     The server holds the global model and performs every update step;
-    clients only return per-batch gradients ∇f_i(w_t), ∇f_i(w_{t-1}).
-    No full-gradient synchronisation is required.
+    clients only return per-batch gradients ∇f_i(w_t), ∇f_i(w_{t-1})
+    computed on the same local minibatch.  No full-gradient
+    synchronisation is required.
 
     Args:
         theta: Proximal step size θ.
@@ -81,11 +86,11 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         self.prox_solver = prox_solver
 
         self.model: nn.Module | None = None
-        self.server_loader: DataLoader | None = None
+        self.server_grad_loader: DataLoader | None = None
+        self.server_prox_loader: DataLoader | None = None
         self.client_loaders: list[DataLoader] = []
         self.loss_fn: nn.Module | None = None
         self.device: torch.device = torch.device("cpu")
-        self.scheduler: ClientBatchScheduler | None = None
         self.v_epoch: ParamList = []
         self.num_clients: int = 0
         self.total_nodes: int = 0
@@ -93,13 +98,15 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
     def initialize(
         self,
         model: nn.Module,
-        server_loader: DataLoader,
+        server_grad_loader: DataLoader,
+        server_prox_loader: DataLoader,
         client_loaders: list[DataLoader],
         loss_fn: nn.Module,
         device: torch.device,
     ) -> None:
         self.model = model
-        self.server_loader = server_loader
+        self.server_grad_loader = server_grad_loader
+        self.server_prox_loader = server_prox_loader
         self.client_loaders = client_loaders
         self.loss_fn = loss_fn
         self.device = device
@@ -108,9 +115,6 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         # plus one per client).
         self.total_nodes = self.num_clients + 1
 
-        self.scheduler = ClientBatchScheduler(
-            self.num_clients, self.batch_size_clients,
-        )
         self.v_epoch = zeros_like_params(model)
 
     # ------------------------------------------------------------------
@@ -119,29 +123,49 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
     def _client_grad_sum(
         self,
         client_ids: list[int],
+        xys: list[tuple[torch.Tensor, torch.Tensor]] | None = None,
     ) -> ParamList:
-        """Σ_{i ∈ batch} ∇f_i(w) at the current model state."""
+        """Σ_{i ∈ batch} ∇f_i(w) at the current model state.
+
+        If ``xys`` is given, uses one pre-sampled minibatch per client
+        (required by the SARAH telescope — same samples at the two
+        evaluation points within one inner step).
+        """
         acc = zeros_like_params(self.model)
-        for cid in client_ids:
-            g = compute_batch_gradient(
-                self.model, self.client_loaders[cid],
-                self.loss_fn, self.device,
-            )
-            add_params_(acc, g)
+        if xys is None:
+            for cid in client_ids:
+                g = compute_batch_gradient(
+                    self.model, self.client_loaders[cid],
+                    self.loss_fn, self.device,
+                )
+                add_params_(acc, g)
+        else:
+            for cid, xy in zip(client_ids, xys):
+                g = compute_batch_gradient(
+                    self.model, self.client_loaders[cid],
+                    self.loss_fn, self.device,
+                    xy=xy,
+                )
+                add_params_(acc, g)
         return acc
 
-    def _server_batch_grad(self) -> ParamList:
+    def _server_batch_grad(
+        self,
+        xy: tuple[torch.Tensor, torch.Tensor] | None = None,
+    ) -> ParamList:
         return compute_batch_gradient(
-            self.model, self.server_loader, self.loss_fn, self.device,
+            self.model, self.server_grad_loader,
+            self.loss_fn, self.device,
+            xy=xy,
         )
 
     # ------------------------------------------------------------------
     # Main epoch
     # ------------------------------------------------------------------
     def run_epoch(self, epoch: int) -> dict[str, float]:
-        assert self.scheduler is not None and self.model is not None
+        assert self.model is not None
 
-        batches = self.scheduler.get_epoch_batches()
+        batches = sample_client_batches(self.num_clients, self.batch_size_clients)
         K = len(batches)
         n = self.total_nodes
         B = self.batch_size_clients  # paper's *fixed* B (used in coefficients)
@@ -150,20 +174,21 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         v = clone_params(self.v_epoch)
         tilde_v = zeros_like_params(self.model)
 
-        # Cache w_0 and ∇f₁(w_0) for the upcoming inner-loop differences.
+        # w_0 for the first inner step (used as w_{t-1} when t=1).
         w_prev = get_params(self.model)
-        grad_f1_prev = self._server_batch_grad()
 
         # w_1^{(s)} = prox_{θ f₁}( w_0^{(s)} − θ · v_0^{(s)} )
         prox_diag_first = self.prox_solver.step(
             self.model, v, self.theta,
-            self.server_loader, self.loss_fn, self.device,
+            self.server_prox_loader, self.loss_fn, self.device,
+            eval_loader=self.server_grad_loader,
         )
 
         # Aggregated diagnostics across the epoch.
-        prox_first_norms: list[float] = [prox_diag_first.get("prox_grad_norm_first", 0.0)]
-        prox_last_norms: list[float] = [prox_diag_first.get("prox_grad_norm_last", 0.0)]
-        prox_loss_means: list[float] = [prox_diag_first.get("prox_loss_mean", 0.0)]
+        prox_first_norms: list[float] = [prox_diag_first["prox_grad_norm_first"]]
+        prox_last_norms: list[float] = [prox_diag_first["prox_grad_norm_last"]]
+        prox_ratios: list[float] = [prox_diag_first["prox_grad_norm_ratio"]]
+        prox_obj_decreases: list[float] = [prox_diag_first["prox_obj_decrease"]]
         step_norms: list[float] = []
 
         for t in range(1, K + 1):
@@ -171,14 +196,20 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             B_actual = len(batch)
             w_curr = get_params(self.model)  # = w_t^{(s)}
 
-            # ── gradients at w_t (model is already at w_t) ───────────
-            grad_f1_curr = self._server_batch_grad()
-            sum_client_grads_curr = self._client_grad_sum(batch)
+            # ── pre-sample one minibatch per server/client for this step ──
+            # Reused at both w_t and w_{t-1} so that the SARAH difference
+            # telescopes into a low-variance estimate.
+            srv_xy = next(iter(self.server_grad_loader))
+            cli_xys = [next(iter(self.client_loaders[cid])) for cid in batch]
 
-            # ── gradients at w_{t-1} ─────────────────────────────────
+            # ── gradients at w_t (model is already at w_t) ───────────
+            grad_f1_curr = self._server_batch_grad(xy=srv_xy)
+            sum_client_grads_curr = self._client_grad_sum(batch, xys=cli_xys)
+
+            # ── gradients at w_{t-1} on the SAME minibatches ─────────
             set_params(self.model, w_prev)
-            sum_client_grads_prev = self._client_grad_sum(batch)
-            # (∇f₁(w_{t-1}) was cached as ``grad_f1_prev``.)
+            grad_f1_prev = self._server_batch_grad(xy=srv_xy)
+            sum_client_grads_prev = self._client_grad_sum(batch, xys=cli_xys)
 
             # Σ_{i ∈ B_t}( ∇f_i − ∇f₁ )(w_t) and (w_{t-1})
             sum_diff_curr = [
@@ -203,25 +234,27 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
 
             # Roll forward bookkeeping for the next iteration.
             w_prev = w_curr
-            grad_f1_prev = grad_f1_curr
 
             # w_{t+1} = prox_{θ f₁}( w_t − θ v_t )
             set_params(self.model, w_curr)
             prox_diag = self.prox_solver.step(
                 self.model, v, self.theta,
-                self.server_loader, self.loss_fn, self.device,
+                self.server_prox_loader, self.loss_fn, self.device,
+                eval_loader=self.server_grad_loader,
             )
 
-            prox_first_norms.append(prox_diag.get("prox_grad_norm_first", 0.0))
-            prox_last_norms.append(prox_diag.get("prox_grad_norm_last", 0.0))
-            prox_loss_means.append(prox_diag.get("prox_loss_mean", 0.0))
+            prox_first_norms.append(prox_diag["prox_grad_norm_first"])
+            prox_last_norms.append(prox_diag["prox_grad_norm_last"])
+            prox_ratios.append(prox_diag["prox_grad_norm_ratio"])
+            prox_obj_decreases.append(prox_diag["prox_obj_decrease"])
             step_norms.append(diff_param_norm(get_params(self.model), w_curr))
 
             logger.debug(
-                "Epoch %d step %d/%d: ‖v‖=%.3e ‖tilde_v‖=%.3e ‖w_{t+1}-w_t‖=%.3e",
+                "Epoch %d step %d/%d: ‖v‖=%.3e ‖tilde_v‖=%.3e ‖w_{t+1}-w_t‖=%.3e "
+                "prox_ratio=%.3f",
                 epoch, t, K,
                 compute_param_norm(v), compute_param_norm(tilde_v),
-                step_norms[-1],
+                step_norms[-1], prox_ratios[-1],
             )
 
         # v^{(s+1)} = tilde_v_{K+1}
@@ -240,8 +273,6 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             "step_norm_last": float(step_norms[-1]) if step_norms else 0.0,
             "prox_grad_norm_first_mean": _avg(prox_first_norms),
             "prox_grad_norm_last_mean": _avg(prox_last_norms),
-            "prox_grad_norm_reduction": (
-                _avg(prox_first_norms) - _avg(prox_last_norms)
-            ),
-            "prox_loss_mean": _avg(prox_loss_means),
+            "prox_grad_norm_ratio_mean": _avg(prox_ratios),
+            "prox_obj_decrease_mean": _avg(prox_obj_decreases),
         }

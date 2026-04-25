@@ -136,32 +136,38 @@ class Runner:
 
         rt = self.cfg.runtime
         base_bs: int = int(rt.batch_size)
-        bs_server = int(OmegaConf.select(rt, "batch_size_server", default=base_bs))
+        large_bs: int = int(
+            OmegaConf.select(rt, "large_batch_size", default=base_bs),
+        )
+        bs_server_grad = int(
+            OmegaConf.select(rt, "batch_size_server_grad", default=large_bs),
+        )
+        bs_server_prox = int(
+            OmegaConf.select(rt, "batch_size_server_prox", default=base_bs),
+        )
         bs_data_clients = int(
-            OmegaConf.select(rt, "batch_size_data_clients", default=base_bs),
+            OmegaConf.select(rt, "batch_size_data_clients", default=large_bs),
         )
         nw: int = self.cfg.runtime.num_workers
-        eval_bs = max(bs_server, bs_data_clients, base_bs) * 2
+        eval_bs = max(bs_server_grad, bs_server_prox, bs_data_clients, base_bs) * 2
 
-        # Optional: server uses an *augmented* training set inside the
-        # inexact prox solver.  Clients keep a deterministic transform so
-        # that ∇f_i(w) is well-defined.
+        # Augmentation, if enabled, applies ONLY to the server's *prox* loader.
+        # The server's *grad* loader and all client loaders must stay
+        # deterministic for the SARAH difference ∇f(w_t)−∇f(w_{t-1}) to be
+        # meaningful (same minibatch reused at both iterates).
         augment_server = bool(
             OmegaConf.select(self.cfg.data, "augment_server", default=False),
         )
-        server_loader_dataset = partitions[0]
+        server_grad_dataset = partitions[0]
+        server_prox_dataset = partitions[0]
         if augment_server:
             aug_train = load_augmented_train(self.cfg.data)
             if aug_train is not None:
-                # The Subset's underlying dataset may be a random_split of the
-                # full deterministic CIFAR-10; we can't trivially recover the
-                # original indices.  Walk back through ``random_split`` and
-                # ``create_partition`` to remap.
                 aug_indices = self._original_indices(partitions[0])
                 if aug_indices is not None:
-                    server_loader_dataset = Subset(aug_train, aug_indices)
+                    server_prox_dataset = Subset(aug_train, aug_indices)
                     logger.info(
-                        "Server loader uses augmented CIFAR-10 (%d samples).",
+                        "Server prox loader uses augmented CIFAR-10 (%d samples).",
                         len(aug_indices),
                     )
                 else:
@@ -170,10 +176,17 @@ class Runner:
                         "falling back to deterministic transform.",
                     )
 
-        self.server_loader = DataLoader(
-            server_loader_dataset, batch_size=bs_server, shuffle=True,
+        self.server_grad_loader = DataLoader(
+            server_grad_dataset, batch_size=bs_server_grad, shuffle=True,
             num_workers=nw,
         )
+        self.server_prox_loader = DataLoader(
+            server_prox_dataset, batch_size=bs_server_prox, shuffle=True,
+            num_workers=nw,
+        )
+        # Kept for backwards references (search/etc.).  Points at the
+        # deterministic gradient loader by convention.
+        self.server_loader = self.server_grad_loader
         self.client_loaders = [
             DataLoader(p, batch_size=bs_data_clients, shuffle=True, num_workers=nw)
             for p in partitions[1:]
@@ -187,12 +200,13 @@ class Runner:
 
         logger.info(
             "Data: %d server samples, %d clients, %d test, %d val "
-            "(minibatch server=%d, clients=%d, augment_server=%s)",
+            "(minibatch server_grad=%d, server_prox=%d, clients=%d, augment_server=%s)",
             len(partitions[0]),
             num_clients,
             len(test_dataset),
             len(val_dataset),
-            bs_server,
+            bs_server_grad,
+            bs_server_prox,
             bs_data_clients,
             augment_server,
         )
@@ -293,7 +307,8 @@ class Runner:
 
         algorithm.initialize(
             model=self.model,
-            server_loader=self.server_loader,
+            server_grad_loader=self.server_grad_loader,
+            server_prox_loader=self.server_prox_loader,
             client_loaders=self.client_loaders,
             loss_fn=self.task.loss_fn,
             device=self.device,

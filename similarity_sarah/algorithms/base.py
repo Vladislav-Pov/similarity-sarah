@@ -30,12 +30,19 @@ class BaseAlgorithm(ABC):
     def initialize(
         self,
         model: nn.Module,
-        server_loader: DataLoader,
+        server_grad_loader: DataLoader,
+        server_prox_loader: DataLoader,
         client_loaders: list[DataLoader],
         loss_fn: nn.Module,
         device: torch.device,
     ) -> None:
-        """Bind the algorithm to a model, data, and device."""
+        """Bind the algorithm to a model, data, and device.
+
+        ``server_grad_loader`` is the deterministic loader used to evaluate
+        ∇f₁ inside the SARAH recursion (must give reproducible gradients for a
+        fixed minibatch).  ``server_prox_loader`` is the loader used inside the
+        inexact proximal solver (may be augmented).
+        """
 
     @abstractmethod
     def run_epoch(self, epoch: int) -> dict[str, float]:

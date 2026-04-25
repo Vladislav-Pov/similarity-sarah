@@ -3,12 +3,25 @@ eval_every: 1
 log_every: 1
 num_workers: 2
 
-# Minibatch size for training loaders.  ``batch_size`` is the default for both roles.
-batch_size: 128
-# Server partition (objective f₁): override to differ from clients (e.g. smaller server shard).
-batch_size_server: ${.batch_size}
-# Client partitions: minibatch for each client's local DataLoader.
-batch_size_data_clients: ${.batch_size}
+# Two canonical batch sizes used by the training loaders:
+#   * ``batch_size``       — small minibatch for noisy/inner training (prox SGD).
+#   * ``large_batch_size`` — large minibatch for low-variance gradient
+#                            estimates that feed the SARAH recursion.
+batch_size: 256
+large_batch_size: 512
+
+# Server — *gradient* loader used inside the SARAH recursion (∇f₁ at w_t/w_{t-1}).
+# Must be deterministic (no augmentation): the same minibatch is reused at the two
+# iterates within one inner step, so a larger batch directly reduces estimator variance.
+batch_size_server_grad: ${.large_batch_size}
+# Server — *prox* loader used inside the inexact proximal solver (stochastic training
+# on f₁).  Augmentation is allowed here (see ``data.augment_server``); a smaller batch
+# keeps the inner loop fast.
+batch_size_server_prox: ${.batch_size}
+# Client partitions: minibatch for each client's local DataLoader.  Also feeds the
+# SARAH recursion (one batch per client per inner step, reused at w_t and w_{t-1}),
+# so we pick the large size to suppress estimator variance.
+batch_size_data_clients: ${.large_batch_size}
 
 # ── Optional learning-rate schedule for the inexact prox solver ──────
 # Multiplies ``prox_lr`` (and only ``prox_lr``) by a per-epoch factor.

@@ -14,9 +14,10 @@ places:
    exactly like in our main algorithm, so the existing
    :class:`ProxSolver` can be re-used.
 
-This file provides the *plumbing* (config wiring, registration, base
-class implementation) so that experimenting with the full algorithm only
-requires filling in :meth:`run_epoch`.
+As in the main algorithm, the SVRS variance-reduction step
+``∇f_i(w_t) − ∇f_i(w_ref)`` is evaluated on the **same** client
+minibatch at both ``w_t`` and ``w_ref``; otherwise the correction term
+behaves like a fresh stochastic gradient with no variance reduction.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from torch.utils.data import DataLoader
 
 from similarity_sarah.algorithms.base import BaseAlgorithm
 from similarity_sarah.runtime.prox_solver import ProxSolver
-from similarity_sarah.runtime.scheduler import ClientBatchScheduler
+from similarity_sarah.runtime.scheduler import sample_client_batches
 from similarity_sarah.utils import (
     ParamList,
     add_params_,
@@ -58,11 +59,11 @@ class SVRS(BaseAlgorithm):
         self.prox_solver = prox_solver
 
         self.model: nn.Module | None = None
-        self.server_loader: DataLoader | None = None
+        self.server_grad_loader: DataLoader | None = None
+        self.server_prox_loader: DataLoader | None = None
         self.client_loaders: list[DataLoader] = []
         self.loss_fn: nn.Module | None = None
         self.device: torch.device = torch.device("cpu")
-        self.scheduler: ClientBatchScheduler | None = None
         self.num_clients: int = 0
         self.total_nodes: int = 0
 
@@ -73,21 +74,20 @@ class SVRS(BaseAlgorithm):
     def initialize(
         self,
         model: nn.Module,
-        server_loader: DataLoader,
+        server_grad_loader: DataLoader,
+        server_prox_loader: DataLoader,
         client_loaders: list[DataLoader],
         loss_fn: nn.Module,
         device: torch.device,
     ) -> None:
         self.model = model
-        self.server_loader = server_loader
+        self.server_grad_loader = server_grad_loader
+        self.server_prox_loader = server_prox_loader
         self.client_loaders = client_loaders
         self.loss_fn = loss_fn
         self.device = device
         self.num_clients = len(client_loaders)
         self.total_nodes = self.num_clients + 1
-        self.scheduler = ClientBatchScheduler(
-            self.num_clients, self.batch_size_clients,
-        )
         self._w_ref = get_params(model)
         self._g_ref = zeros_like_params(model)
 
@@ -98,7 +98,7 @@ class SVRS(BaseAlgorithm):
         set_params(self.model, self._w_ref)
         g_ref = zeros_like_params(self.model)
         grad_f1 = compute_batch_gradient(
-            self.model, self.server_loader, self.loss_fn, self.device,
+            self.model, self.server_grad_loader, self.loss_fn, self.device,
         )
         for loader in self.client_loaders:
             g = compute_batch_gradient(
@@ -109,13 +109,13 @@ class SVRS(BaseAlgorithm):
         self._g_ref = g_ref
 
     def run_epoch(self, epoch: int) -> dict[str, float]:
-        assert self.scheduler is not None and self.model is not None
+        assert self.model is not None
 
         # Refresh anchor at the start of every outer round.
         self._w_ref = get_params(self.model)
         self._refresh_anchor()
 
-        batches = self.scheduler.get_epoch_batches()
+        batches = sample_client_batches(self.num_clients, self.batch_size_clients)
         K = len(batches)
         n = self.total_nodes
         B = self.batch_size_clients
@@ -124,28 +124,34 @@ class SVRS(BaseAlgorithm):
             B_actual = len(batch)
             w_curr = get_params(self.model)
 
+            # Pre-sample one minibatch per node reused at w_curr and w_ref.
+            srv_xy = next(iter(self.server_grad_loader))
+            cli_xys = [next(iter(self.client_loaders[cid])) for cid in batch]
+
             # ── stochastic similarity correction at w_t ──────────────
             grad_f1_curr = compute_batch_gradient(
-                self.model, self.server_loader, self.loss_fn, self.device,
+                self.model, self.server_grad_loader, self.loss_fn, self.device,
+                xy=srv_xy,
             )
             sum_diff_curr = zeros_like_params(self.model)
-            for cid in batch:
+            for cid, cli_xy in zip(batch, cli_xys):
                 g_curr = compute_batch_gradient(
                     self.model, self.client_loaders[cid],
-                    self.loss_fn, self.device,
+                    self.loss_fn, self.device, xy=cli_xy,
                 )
                 for sd, gc, g1 in zip(sum_diff_curr, g_curr, grad_f1_curr):
                     sd.add_(gc - g1)
 
             set_params(self.model, self._w_ref)
             grad_f1_ref = compute_batch_gradient(
-                self.model, self.server_loader, self.loss_fn, self.device,
+                self.model, self.server_grad_loader, self.loss_fn, self.device,
+                xy=srv_xy,
             )
             sum_diff_ref = zeros_like_params(self.model)
-            for cid in batch:
+            for cid, cli_xy in zip(batch, cli_xys):
                 g_ref_b = compute_batch_gradient(
                     self.model, self.client_loaders[cid],
-                    self.loss_fn, self.device,
+                    self.loss_fn, self.device, xy=cli_xy,
                 )
                 for sd, gr, g1 in zip(sum_diff_ref, g_ref_b, grad_f1_ref):
                     sd.add_(gr - g1)
@@ -158,7 +164,8 @@ class SVRS(BaseAlgorithm):
             set_params(self.model, w_curr)
             self.prox_solver.step(
                 self.model, v, self.theta,
-                self.server_loader, self.loss_fn, self.device,
+                self.server_prox_loader, self.loss_fn, self.device,
+                eval_loader=self.server_grad_loader,
             )
 
             logger.debug(

@@ -15,7 +15,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from similarity_sarah.algorithms.base import BaseAlgorithm
-from similarity_sarah.runtime.scheduler import ClientBatchScheduler
+from similarity_sarah.runtime.scheduler import sample_client_batches
 from similarity_sarah.utils import (
     ParamList,
     add_params_,
@@ -50,41 +50,40 @@ class DistributedSARAH(BaseAlgorithm):
         self.batch_size_clients = batch_size_clients
 
         self.model: nn.Module | None = None
-        self.server_loader: DataLoader | None = None
+        self.server_grad_loader: DataLoader | None = None
+        self.server_prox_loader: DataLoader | None = None
         self.client_loaders: list[DataLoader] = []
         self.loss_fn: nn.Module | None = None
         self.device: torch.device = torch.device("cpu")
-        self.scheduler: ClientBatchScheduler | None = None
         self.num_clients: int = 0
         self.total_nodes: int = 0
 
     def initialize(
         self,
         model: nn.Module,
-        server_loader: DataLoader,
+        server_grad_loader: DataLoader,
+        server_prox_loader: DataLoader,
         client_loaders: list[DataLoader],
         loss_fn: nn.Module,
         device: torch.device,
     ) -> None:
         self.model = model
-        self.server_loader = server_loader
+        self.server_grad_loader = server_grad_loader
+        # Kept for parity with other algorithms; this baseline uses only the
+        # deterministic gradient loader (no prox operator here).
+        self.server_prox_loader = server_prox_loader
         self.client_loaders = client_loaders
         self.loss_fn = loss_fn
         self.device = device
         self.num_clients = len(client_loaders)
         self.total_nodes = self.num_clients + 1
-        self.scheduler = ClientBatchScheduler(
-            self.num_clients, self.batch_size_clients,
-        )
 
     # ------------------------------------------------------------------
     def run_epoch(self, epoch: int) -> dict[str, float]:
-        assert self.scheduler is not None
-
         # ── global gradient estimate at epoch start (one batch per node) ─
         v = self._compute_global_gradient()
 
-        batches = self.scheduler.get_epoch_batches()
+        batches = sample_client_batches(self.num_clients, self.batch_size_clients)
         K = len(batches)
         n = self.total_nodes
 
@@ -96,15 +95,15 @@ class DistributedSARAH(BaseAlgorithm):
             set_params(self.model, w_new)
 
             # ── server correction (same minibatch at w_new and w_old) ─
-            srv_xy = next(iter(self.server_loader))
+            srv_xy = next(iter(self.server_grad_loader))
             set_params(self.model, w_new)
             grad_f1_new = compute_batch_gradient(
-                self.model, self.server_loader, self.loss_fn, self.device,
+                self.model, self.server_grad_loader, self.loss_fn, self.device,
                 xy=srv_xy,
             )
             set_params(self.model, w_old)
             grad_f1_old = compute_batch_gradient(
-                self.model, self.server_loader, self.loss_fn, self.device,
+                self.model, self.server_grad_loader, self.loss_fn, self.device,
                 xy=srv_xy,
             )
             delta_server = [gn - go for gn, go in zip(grad_f1_new, grad_f1_old)]
@@ -146,7 +145,7 @@ class DistributedSARAH(BaseAlgorithm):
         global_grad = zeros_like_params(self.model)
 
         grad_server = compute_batch_gradient(
-            self.model, self.server_loader, self.loss_fn, self.device,
+            self.model, self.server_grad_loader, self.loss_fn, self.device,
         )
         add_params_(global_grad, grad_server, alpha=1.0 / n)
 
