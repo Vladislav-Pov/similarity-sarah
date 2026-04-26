@@ -1,1 +1,13 @@
 name: uniform
+# Fraction of *training* data (after the val split) assigned to the server's
+# partition (objective f₁).  The remaining (1 − server_fraction) is split
+# equally across all clients.
+#
+#   null  → equal partition  1 / (num_clients + 1)              ← old behaviour
+#   0.3   → server gets ~30%, each client gets the same share of the rest
+#   0.5   → server gets ~50%, each client gets the same share of the rest
+#
+# Since the server's f₁ enters the prox subproblem at every outer step, giving
+# it more data makes the algorithm's "server is a special / more powerful
+# node" assumption explicit and usually improves quality on CIFAR-10.
+server_fraction: null

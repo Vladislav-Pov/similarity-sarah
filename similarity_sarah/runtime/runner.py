@@ -198,11 +198,15 @@ class Runner:
             val_dataset, batch_size=eval_bs, shuffle=False, num_workers=nw,
         )
 
+        client_sizes = [len(p) for p in partitions[1:]]
+        client_sz_min = min(client_sizes) if client_sizes else 0
+        client_sz_max = max(client_sizes) if client_sizes else 0
         logger.info(
-            "Data: %d server samples, %d clients, %d test, %d val "
+            "Data: server=%d, %d clients (sizes %d…%d), test=%d, val=%d "
             "(minibatch server_grad=%d, server_prox=%d, clients=%d, augment_server=%s)",
             len(partitions[0]),
             num_clients,
+            client_sz_min, client_sz_max,
             len(test_dataset),
             len(val_dataset),
             bs_server_grad,
