@@ -266,6 +266,9 @@ class Runner:
         grad_clip = float(
             OmegaConf.select(algo_cfg, "prox_grad_clip", default=0.0),
         )
+        eval_batches = int(
+            OmegaConf.select(algo_cfg, "prox_eval_batches", default=1),
+        )
 
         if kind == "sgd":
             momentum = float(
@@ -277,6 +280,7 @@ class Runner:
                 momentum=momentum,
                 weight_decay=weight_decay,
                 grad_clip=grad_clip,
+                eval_batches=eval_batches,
             )
         if kind == "adam":
             beta1 = float(OmegaConf.select(algo_cfg, "prox_adam_beta1", default=0.9))
@@ -287,6 +291,7 @@ class Runner:
                 betas=(beta1, beta2),
                 weight_decay=weight_decay,
                 grad_clip=grad_clip,
+                eval_batches=eval_batches,
             )
         raise ValueError(f"Unknown prox_solver: {kind}")
 

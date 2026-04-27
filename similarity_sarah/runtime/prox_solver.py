@@ -81,6 +81,59 @@ def _prox_grad_norm(
     return float(s ** 0.5)
 
 
+def _prox_diag_on_batches(
+    params: list[torch.Tensor],
+    z: ParamList,
+    theta: float,
+    model: nn.Module,
+    loss_fn: nn.Module,
+    xys: list[tuple[torch.Tensor, torch.Tensor]],
+    device: torch.device,
+) -> tuple[float, float]:
+    """Return (‖∇Φ(w)‖, Φ(w)) on a *fixed list* of minibatches.
+
+    The proximal objective is
+
+        Φ(w) = f₁(w) + ‖w − z‖² / (2θ),
+
+    where ``w`` is the current model state and ``z = w_outer − θ·v`` is the
+    fixed target point of the prox subproblem.
+
+    With multiple ``xys``, gradients of ``f₁`` are accumulated (sample-weighted)
+    *before* the norm is taken — this is a less noisy stochastic estimate of
+    the true ‖∇Φ(w)‖ than evaluating on a single minibatch.  Variance shrinks
+    as ``1 / √(total_samples)``.
+    """
+    accum_grad: list[torch.Tensor] = [torch.zeros_like(p) for p in params]
+    loss_sum_weighted = 0.0
+    total_count = 0
+    for xy in xys:
+        x, y = xy
+        x, y = x.to(device), y.to(device)
+        bs = x.size(0)
+        output = model(x)
+        loss = loss_fn(output, y)
+        grads = torch.autograd.grad(loss, params)
+        for a, g in zip(accum_grad, grads):
+            a.add_(g, alpha=bs)
+        loss_sum_weighted += float(loss.detach().item()) * bs
+        total_count += bs
+
+    if total_count == 0:
+        raise ValueError("xys is empty — at least one eval batch is required")
+
+    for a in accum_grad:
+        a.div_(total_count)
+    avg_loss = loss_sum_weighted / total_count
+
+    grad_norm = _prox_grad_norm(params, accum_grad, z, theta)
+    penalty_sq = 0.0
+    for p, zi in zip(params, z):
+        penalty_sq += (p.data - zi).square().sum().item()
+    obj = avg_loss + 0.5 * penalty_sq / max(theta, 1e-12)
+    return grad_norm, obj
+
+
 def _prox_diag_on_batch(
     params: list[torch.Tensor],
     z: ParamList,
@@ -90,26 +143,8 @@ def _prox_diag_on_batch(
     xy: tuple[torch.Tensor, torch.Tensor],
     device: torch.device,
 ) -> tuple[float, float]:
-    """Return (‖∇Φ(w)‖, Φ(w)) on a fixed minibatch.
-
-    The proximal objective is
-
-        Φ(w) = f₁(w) + ‖w − z‖² / (2θ),
-
-    where ``w`` is the current model state and ``z = w_outer − θ·v`` is the
-    fixed target point of the prox subproblem.
-    """
-    x, y = xy
-    x, y = x.to(device), y.to(device)
-    output = model(x)
-    loss = loss_fn(output, y)
-    grads = torch.autograd.grad(loss, params)
-    grad_norm = _prox_grad_norm(params, list(grads), z, theta)
-    penalty_sq = 0.0
-    for p, zi in zip(params, z):
-        penalty_sq += (p.data - zi).square().sum().item()
-    obj = float(loss.detach().item()) + 0.5 * penalty_sq / max(theta, 1e-12)
-    return grad_norm, obj
+    """Single-batch convenience wrapper around :func:`_prox_diag_on_batches`."""
+    return _prox_diag_on_batches(params, z, theta, model, loss_fn, [xy], device)
 
 
 def _prox_z_dist_rel(
@@ -128,8 +163,34 @@ def _fresh_eval_xy(
     eval_loader: DataLoader | None,
     server_loader: DataLoader,
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    """Sample one minibatch (legacy helper, kept for back-compat)."""
     loader = eval_loader if eval_loader is not None else server_loader
     return next(iter(loader))
+
+
+def _fresh_eval_xys(
+    eval_loader: DataLoader | None,
+    server_loader: DataLoader,
+    n_batches: int,
+) -> list[tuple[torch.Tensor, torch.Tensor]]:
+    """Sample ``n_batches`` minibatches from the eval loader (or server loader).
+
+    The list is pre-materialised so that exactly the same samples are used for
+    the *first* and *last* diagnostic evaluations, which is essential for the
+    `prox_grad_norm_first / prox_grad_norm_last` comparison to be meaningful.
+    """
+    if n_batches < 1:
+        raise ValueError(f"n_batches must be >= 1, got {n_batches}")
+    loader = eval_loader if eval_loader is not None else server_loader
+    it = iter(loader)
+    xys: list[tuple[torch.Tensor, torch.Tensor]] = []
+    for _ in range(n_batches):
+        try:
+            xys.append(next(it))
+        except StopIteration:
+            it = iter(loader)
+            xys.append(next(it))
+    return xys
 
 
 def _build_diag_payload(
@@ -199,6 +260,7 @@ class InexactProxSGD(ProxSolver):
         momentum: float = 0.0,
         weight_decay: float = 0.0,
         grad_clip: float = 0.0,
+        eval_batches: int = 1,
     ) -> None:
         self.num_steps = num_steps
         self.lr = lr
@@ -207,6 +269,11 @@ class InexactProxSGD(ProxSolver):
         # Global L2-norm clip applied to the inner-step direction (∇Φ + wd·w)
         # before momentum / SGD update.  ``0`` disables clipping.
         self.grad_clip = grad_clip
+        # Number of fixed eval minibatches used to compute the prox-grad
+        # diagnostic (start / end of inner loop).  >1 reduces noise of the
+        # ‖∇Φ‖ estimate by √eval_batches; the same minibatches are reused at
+        # both end-points so that ``ratio = last/first`` is comparable.
+        self.eval_batches = max(1, int(eval_batches))
 
     def step(
         self,
@@ -231,10 +298,10 @@ class InexactProxSGD(ProxSolver):
         if self.momentum > 0:
             velocity = [torch.zeros_like(p) for p in params]
 
-        # Fixed eval batch for diagnostics (sampled once, reused at start + end).
-        eval_xy = _fresh_eval_xy(eval_loader, server_loader)
-        first_grad_norm, first_obj = _prox_diag_on_batch(
-            params, z, theta, model, loss_fn, eval_xy, device,
+        # Fixed eval batches for diagnostics — sampled once, reused at start + end.
+        eval_xys = _fresh_eval_xys(eval_loader, server_loader, self.eval_batches)
+        first_grad_norm, first_obj = _prox_diag_on_batches(
+            params, z, theta, model, loss_fn, eval_xys, device,
         )
 
         clip_count = 0
@@ -271,8 +338,8 @@ class InexactProxSGD(ProxSolver):
                     else:
                         p.data.sub_(d, alpha=self.lr)
 
-        last_grad_norm, last_obj = _prox_diag_on_batch(
-            params, z, theta, model, loss_fn, eval_xy, device,
+        last_grad_norm, last_obj = _prox_diag_on_batches(
+            params, z, theta, model, loss_fn, eval_xys, device,
         )
         return _build_diag_payload(
             first_grad_norm, first_obj,
@@ -296,6 +363,7 @@ class InexactProxAdam(ProxSolver):
         eps: float = 1e-8,
         weight_decay: float = 0.0,
         grad_clip: float = 0.0,
+        eval_batches: int = 1,
     ) -> None:
         self.num_steps = num_steps
         self.lr = lr
@@ -305,6 +373,8 @@ class InexactProxAdam(ProxSolver):
         # Global L2-norm clip applied to the direction before Adam moments;
         # ``0`` disables clipping.
         self.grad_clip = grad_clip
+        # See ``InexactProxSGD.eval_batches``.
+        self.eval_batches = max(1, int(eval_batches))
 
     def step(
         self,
@@ -325,9 +395,9 @@ class InexactProxAdam(ProxSolver):
         v_state = [torch.zeros_like(p) for p in params]
         b1, b2 = self.betas
 
-        eval_xy = _fresh_eval_xy(eval_loader, server_loader)
-        first_grad_norm, first_obj = _prox_diag_on_batch(
-            params, z, theta, model, loss_fn, eval_xy, device,
+        eval_xys = _fresh_eval_xys(eval_loader, server_loader, self.eval_batches)
+        first_grad_norm, first_obj = _prox_diag_on_batches(
+            params, z, theta, model, loss_fn, eval_xys, device,
         )
 
         clip_count = 0
@@ -365,8 +435,8 @@ class InexactProxAdam(ProxSolver):
                     v_hat = v_state[i] / bias2
                     p.data.addcdiv_(m_hat, v_hat.sqrt().add_(self.eps), value=-self.lr)
 
-        last_grad_norm, last_obj = _prox_diag_on_batch(
-            params, z, theta, model, loss_fn, eval_xy, device,
+        last_grad_norm, last_obj = _prox_diag_on_batches(
+            params, z, theta, model, loss_fn, eval_xys, device,
         )
         return _build_diag_payload(
             first_grad_norm, first_obj,

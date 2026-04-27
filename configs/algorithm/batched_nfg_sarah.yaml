@@ -22,3 +22,10 @@ prox_weight_decay: 0.0
 # common stability anchor: almost never fires when the prox is well-conditioned,
 # kicks in exactly when it shouldn't have failed.
 prox_grad_clip: 1.0
+# How many fixed eval mini-batches to use for the prox-grad diagnostic
+# (``prox_grad_norm_first/last``).  Increasing reduces the noise of the
+# ‖∇Φ‖ estimate by 1/√eval_batches at the cost of one extra forward+backward
+# per batch on each prox call (cheap relative to ``prox_num_steps``).  The
+# *same* batches are reused at start and end so that ratio = last/first is
+# directly comparable.  Recommended: 4-8.
+prox_eval_batches: 4
