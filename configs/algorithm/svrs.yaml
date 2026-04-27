@@ -10,3 +10,4 @@ prox_lr: 0.002
 prox_momentum: 0.9
 prox_weight_decay: 0.0
 prox_solver: sgd
+prox_grad_clip: 1.0

@@ -138,6 +138,7 @@ def _build_diag_payload(
     last_grad_norm: float,
     last_obj: float,
     num_steps: int,
+    clip_count: int = 0,
 ) -> dict[str, float]:
     return {
         "prox_grad_norm_first": float(first_grad_norm),
@@ -145,7 +146,35 @@ def _build_diag_payload(
         "prox_grad_norm_ratio": float(last_grad_norm / max(first_grad_norm, 1e-12)),
         "prox_obj_decrease": float(first_obj - last_obj),
         "prox_inner_steps": float(num_steps),
+        "prox_clip_frac": float(clip_count) / float(max(num_steps, 1)),
     }
+
+
+def _clip_directions_(
+    directions: list[torch.Tensor],
+    max_norm: float,
+) -> bool:
+    """In-place global L2-norm clip across the parameter list.
+
+    Mirrors :func:`torch.nn.utils.clip_grad_norm_` but operates on an
+    arbitrary list of tensors (not necessarily ``.grad`` of parameters).
+
+    Returns:
+        ``True`` if the original norm exceeded ``max_norm`` and a rescaling
+        was applied; ``False`` otherwise.
+    """
+    if max_norm <= 0:
+        return False
+    total_sq = 0.0
+    for d in directions:
+        total_sq += d.square().sum().item()
+    total = total_sq ** 0.5
+    if total > max_norm:
+        scale = max_norm / max(total, 1e-12)
+        for d in directions:
+            d.mul_(scale)
+        return True
+    return False
 
 
 class InexactProxSGD(ProxSolver):
@@ -169,11 +198,15 @@ class InexactProxSGD(ProxSolver):
         lr: float,
         momentum: float = 0.0,
         weight_decay: float = 0.0,
+        grad_clip: float = 0.0,
     ) -> None:
         self.num_steps = num_steps
         self.lr = lr
         self.momentum = momentum
         self.weight_decay = weight_decay
+        # Global L2-norm clip applied to the inner-step direction (∇Φ + wd·w)
+        # before momentum / SGD update.  ``0`` disables clipping.
+        self.grad_clip = grad_clip
 
     def step(
         self,
@@ -204,6 +237,7 @@ class InexactProxSGD(ProxSolver):
             params, z, theta, model, loss_fn, eval_xy, device,
         )
 
+        clip_count = 0
         server_iter = iter(server_loader)
         for _ in range(self.num_steps):
             try:
@@ -218,15 +252,24 @@ class InexactProxSGD(ProxSolver):
             grads = torch.autograd.grad(loss, params)
 
             with torch.no_grad():
-                for i, (p, g, zi) in enumerate(zip(params, grads, z)):
-                    direction = g + (p.data - zi) / theta
+                # Build the per-parameter direction list, clip its global
+                # L2 norm if requested, then apply the (momentum-)SGD step.
+                directions: list[torch.Tensor] = []
+                for p, g, zi in zip(params, grads, z):
+                    d = g + (p.data - zi) / theta
                     if self.weight_decay > 0:
-                        direction = direction + self.weight_decay * p.data
+                        d = d + self.weight_decay * p.data
+                    directions.append(d)
+
+                if self.grad_clip > 0 and _clip_directions_(directions, self.grad_clip):
+                    clip_count += 1
+
+                for i, (p, d) in enumerate(zip(params, directions)):
                     if velocity is not None:
-                        velocity[i].mul_(self.momentum).add_(direction)
+                        velocity[i].mul_(self.momentum).add_(d)
                         p.data.sub_(velocity[i], alpha=self.lr)
                     else:
-                        p.data.sub_(direction, alpha=self.lr)
+                        p.data.sub_(d, alpha=self.lr)
 
         last_grad_norm, last_obj = _prox_diag_on_batch(
             params, z, theta, model, loss_fn, eval_xy, device,
@@ -235,6 +278,7 @@ class InexactProxSGD(ProxSolver):
             first_grad_norm, first_obj,
             last_grad_norm, last_obj,
             self.num_steps,
+            clip_count=clip_count,
         )
 
 
@@ -251,12 +295,16 @@ class InexactProxAdam(ProxSolver):
         betas: tuple[float, float] = (0.9, 0.999),
         eps: float = 1e-8,
         weight_decay: float = 0.0,
+        grad_clip: float = 0.0,
     ) -> None:
         self.num_steps = num_steps
         self.lr = lr
         self.betas = betas
         self.eps = eps
         self.weight_decay = weight_decay
+        # Global L2-norm clip applied to the direction before Adam moments;
+        # ``0`` disables clipping.
+        self.grad_clip = grad_clip
 
     def step(
         self,
@@ -282,6 +330,7 @@ class InexactProxAdam(ProxSolver):
             params, z, theta, model, loss_fn, eval_xy, device,
         )
 
+        clip_count = 0
         server_iter = iter(server_loader)
         for t in range(1, self.num_steps + 1):
             try:
@@ -299,12 +348,19 @@ class InexactProxAdam(ProxSolver):
             bias2 = 1 - b2 ** t
 
             with torch.no_grad():
-                for i, (p, g, zi) in enumerate(zip(params, grads, z)):
-                    direction = g + (p.data - zi) / theta
+                directions: list[torch.Tensor] = []
+                for p, g, zi in zip(params, grads, z):
+                    d = g + (p.data - zi) / theta
                     if self.weight_decay > 0:
-                        direction = direction + self.weight_decay * p.data
-                    m_state[i].mul_(b1).add_(direction, alpha=1 - b1)
-                    v_state[i].mul_(b2).addcmul_(direction, direction, value=1 - b2)
+                        d = d + self.weight_decay * p.data
+                    directions.append(d)
+
+                if self.grad_clip > 0 and _clip_directions_(directions, self.grad_clip):
+                    clip_count += 1
+
+                for i, (p, d) in enumerate(zip(params, directions)):
+                    m_state[i].mul_(b1).add_(d, alpha=1 - b1)
+                    v_state[i].mul_(b2).addcmul_(d, d, value=1 - b2)
                     m_hat = m_state[i] / bias1
                     v_hat = v_state[i] / bias2
                     p.data.addcdiv_(m_hat, v_hat.sqrt().add_(self.eps), value=-self.lr)
@@ -316,4 +372,5 @@ class InexactProxAdam(ProxSolver):
             first_grad_norm, first_obj,
             last_grad_norm, last_obj,
             self.num_steps,
+            clip_count=clip_count,
         )

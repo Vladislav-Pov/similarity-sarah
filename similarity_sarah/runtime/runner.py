@@ -263,6 +263,9 @@ class Runner:
         weight_decay = float(
             OmegaConf.select(algo_cfg, "prox_weight_decay", default=0.0),
         )
+        grad_clip = float(
+            OmegaConf.select(algo_cfg, "prox_grad_clip", default=0.0),
+        )
 
         if kind == "sgd":
             momentum = float(
@@ -273,6 +276,7 @@ class Runner:
                 lr=lr,
                 momentum=momentum,
                 weight_decay=weight_decay,
+                grad_clip=grad_clip,
             )
         if kind == "adam":
             beta1 = float(OmegaConf.select(algo_cfg, "prox_adam_beta1", default=0.9))
@@ -282,6 +286,7 @@ class Runner:
                 lr=lr,
                 betas=(beta1, beta2),
                 weight_decay=weight_decay,
+                grad_clip=grad_clip,
             )
         raise ValueError(f"Unknown prox_solver: {kind}")
 

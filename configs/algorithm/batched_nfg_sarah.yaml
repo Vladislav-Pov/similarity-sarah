@@ -15,3 +15,10 @@ prox_num_steps: 50
 prox_lr: 0.05
 prox_momentum: 0.9
 prox_weight_decay: 0.0
+# Global L2-norm clip on the inner-step direction (∇Φ).  ``0`` disables
+# clipping.  Without it, a single noisy minibatch can produce a large gradient
+# that SGD then amplifies into a divergence cascade (model moves into bigger-
+# gradient region → next step bigger → …).  A clip threshold of ~1.0 is a
+# common stability anchor: almost never fires when the prox is well-conditioned,
+# kicks in exactly when it shouldn't have failed.
+prox_grad_clip: 1.0

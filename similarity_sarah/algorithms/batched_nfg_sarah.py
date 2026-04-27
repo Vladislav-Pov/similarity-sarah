@@ -183,12 +183,22 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             self.server_prox_loader, self.loss_fn, self.device,
             eval_loader=self.server_grad_loader,
         )
+        logger.info(
+            "Epoch %d step 0/%d (initial prox): prox_grad_first=%.4f  prox_grad_last=%.4f  "
+            "ratio=%.3f  clip_frac=%.2f",
+            epoch, K,
+            prox_diag_first["prox_grad_norm_first"],
+            prox_diag_first["prox_grad_norm_last"],
+            prox_diag_first["prox_grad_norm_ratio"],
+            prox_diag_first.get("prox_clip_frac", 0.0),
+        )
 
         # Aggregated diagnostics across the epoch.
         prox_first_norms: list[float] = [prox_diag_first["prox_grad_norm_first"]]
         prox_last_norms: list[float] = [prox_diag_first["prox_grad_norm_last"]]
         prox_ratios: list[float] = [prox_diag_first["prox_grad_norm_ratio"]]
         prox_obj_decreases: list[float] = [prox_diag_first["prox_obj_decrease"]]
+        prox_clip_fracs: list[float] = [prox_diag_first.get("prox_clip_frac", 0.0)]
         step_norms: list[float] = []
 
         for t in range(1, K + 1):
@@ -247,14 +257,16 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             prox_last_norms.append(prox_diag["prox_grad_norm_last"])
             prox_ratios.append(prox_diag["prox_grad_norm_ratio"])
             prox_obj_decreases.append(prox_diag["prox_obj_decrease"])
+            prox_clip_fracs.append(prox_diag.get("prox_clip_frac", 0.0))
             step_norms.append(diff_param_norm(get_params(self.model), w_curr))
 
-            logger.debug(
-                "Epoch %d step %d/%d: ‖v‖=%.3e ‖tilde_v‖=%.3e ‖w_{t+1}-w_t‖=%.3e "
-                "prox_ratio=%.3f",
+            logger.info(
+                "Epoch %d step %d/%d: prox_grad_first=%.4f  prox_grad_last=%.4f  "
+                "ratio=%.3f  clip_frac=%.2f  ‖v‖=%.3e  ‖w_{t+1}-w_t‖=%.3e",
                 epoch, t, K,
-                compute_param_norm(v), compute_param_norm(tilde_v),
-                step_norms[-1], prox_ratios[-1],
+                prox_first_norms[-1], prox_last_norms[-1],
+                prox_ratios[-1], prox_clip_fracs[-1],
+                compute_param_norm(v), step_norms[-1],
             )
 
         # v^{(s+1)} = tilde_v_{K+1}
@@ -275,4 +287,5 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             "prox_grad_norm_last_mean": _avg(prox_last_norms),
             "prox_grad_norm_ratio_mean": _avg(prox_ratios),
             "prox_obj_decrease_mean": _avg(prox_obj_decreases),
+            "prox_clip_frac_mean": _avg(prox_clip_fracs),
         }
