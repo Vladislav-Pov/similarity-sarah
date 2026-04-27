@@ -121,6 +121,9 @@ case "$STAGE" in
             "algorithm.theta=0.02"
         ;;
 
+    # Tuning sweeps live in scripts/tune.sh — keep run.sh focused on
+    # algorithm-stage runs and one-offs.
+
     # Grid search (per configs/search/grid.yaml; override from CLI freely).
     grid)
         "$PYTHON" main.py "search=grid" "${COMMON[@]}" "$@"
@@ -140,6 +143,7 @@ case "$STAGE" in
         echo "Unknown stage: $STAGE"
         echo "Available: baseline | stage1-wd | stage1-numsteps | stage1-lr | stage1-sgd"
         echo "           stage2-theta | svrs-baseline | grid | optuna | single"
+        echo "Tuning sweeps: see scripts/tune.sh"
         exit 1
         ;;
 esac

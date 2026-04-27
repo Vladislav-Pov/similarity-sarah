@@ -1,0 +1,54 @@
+# Tight Optuna search around the current best (theta=0.5, prox_lr=0.005,
+# prox_num_steps=80, prox_momentum=0, prox_grad_clip=2.0, prox_v_schedule=constant).
+# 12 trials × 25 epochs ≈ 9 h on a single GPU; median pruning kills weak
+# trials early so wall-clock is usually 5-7 h.
+#
+# Knobs *not* in the search space (deliberately fixed):
+#   prox_grad_clip = 2.0     (rare, fires <5% — already calibrated)
+#   prox_eval_batches = 8    (diagnostic only, doesn't affect training)
+#   prox_weight_decay = 0    (verified not useful)
+#   prox_v_schedule = constant   (compare separately via night-sweep #6)
+#   batch_size_clients = 1   (B=1 is the paper setting; varying changes meaning)
+enabled: true
+method: optuna
+max_epochs: 25
+num_trials: 12
+wandb_project: similarity-sarah
+wandb_group: "optuna-tight-${now:%Y%m%d-%H%M%S}"
+
+sampler:
+  kind: tpe
+  seed: 0
+
+# Aggressive pruning: kill below-median trials after 3 warmup epochs.
+pruner:
+  kind: median
+  n_startup_trials: 3
+  n_warmup_epochs: 3
+  interval_epochs: 1
+
+shared:
+  batch_size_clients:
+    type: categorical
+    choices: [1]
+
+batched_nfg_sarah:
+  theta:
+    type: float
+    low: 0.2
+    high: 1.5
+    log: true
+  prox_lr:
+    type: float
+    low: 2.0e-3
+    high: 1.5e-2
+    log: true
+  prox_num_steps:
+    type: int
+    low: 50
+    high: 160
+    log: true
+  prox_momentum:
+    type: float
+    low: 0.0
+    high: 0.6
