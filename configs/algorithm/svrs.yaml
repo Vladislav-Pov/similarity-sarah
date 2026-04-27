@@ -12,3 +12,4 @@ prox_weight_decay: 0.0
 prox_solver: sgd
 prox_grad_clip: 1.0
 prox_eval_batches: 4
+prox_v_schedule: constant

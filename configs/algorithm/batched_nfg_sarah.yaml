@@ -29,3 +29,12 @@ prox_grad_clip: 1.0
 # *same* batches are reused at start and end so that ratio = last/first is
 # directly comparable.  Recommended: 4-8.
 prox_eval_batches: 4
+# Schedule for the α coefficient in front of v inside the prox cell:
+#   "constant" — α = 1 throughout (canonical prox).
+#   "linear"   — α linearly decays 1 → 0 across ``prox_num_steps``;
+#                early inner steps push along the SARAH direction θ·v,
+#                late inner steps refine f₁ near w_outer with vanishing v.
+# With "linear" the canonical-prox diagnostic ``prox_grad_norm_ratio`` may
+# stay near 1 (the schedule isn't targeting the canonical optimum) — track
+# ``val/accuracy`` and ``prox_obj_decrease`` instead for that mode.
+prox_v_schedule: constant

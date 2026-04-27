@@ -27,6 +27,26 @@ for "did the prox subproblem actually get solved":
     prox_grad_norm_ratio   last / max(first, 1e-12)     — close to 0 ⇔ well-solved
     prox_obj_decrease      Φ(w_0_prox) − Φ(w_final)     — should be positive
     prox_inner_steps       configured ``num_steps``
+
+Optional v-decay schedule
+-------------------------
+With ``v_schedule="linear"`` the inner loop interpolates the prox target
+between the canonical SARAH-style point and ``w_outer``:
+
+    z(α_t) = w_outer − θ·α_t·v,    α_t = 1 − t/(num_steps − 1)
+
+so the early iterations are pulled toward the full SARAH update
+(``α=1``), while late iterations relax toward ``w_outer`` (``α→0``,
+i.e. plain ``f₁``-minimisation near the current iterate).  Algebraically
+this just rescales ``v`` inside the inner-step direction:
+
+    ∇Φ_t(w) = ∇f₁(w) + (w − w_outer)/θ + α_t · v.
+
+The diagnostic norms are still computed against the *canonical*
+``α=1`` prox cell, so with a non-constant schedule the reported
+``prox_grad_norm_ratio`` may stay near 1 — the canonical optimum is
+not what the schedule is targeting.  ``prox_obj_decrease`` and the
+end-of-epoch ``val/accuracy`` are the right signals there.
 """
 
 from __future__ import annotations
@@ -79,6 +99,23 @@ def _prox_grad_norm(
         delta = g + (p.data - zi) / theta
         s += delta.square().sum().item()
     return float(s ** 0.5)
+
+
+def _alpha_at(t: int, num_steps: int, schedule: str) -> float:
+    """Schedule for the ``α`` coefficient in front of ``v`` inside the prox.
+
+    With ``schedule="constant"`` always returns 1.0 (legacy / canonical
+    behaviour).  With ``schedule="linear"`` returns 1 at ``t=0`` and 0 at
+    ``t=num_steps-1``, linearly interpolated:
+
+        α_t = 1 − t / (num_steps − 1).
+    """
+    if schedule == "constant":
+        return 1.0
+    if schedule == "linear":
+        denom = max(num_steps - 1, 1)
+        return 1.0 - float(t) / float(denom)
+    raise ValueError(f"Unknown v_schedule: {schedule!r}")
 
 
 def _prox_diag_on_batches(
@@ -261,6 +298,7 @@ class InexactProxSGD(ProxSolver):
         weight_decay: float = 0.0,
         grad_clip: float = 0.0,
         eval_batches: int = 1,
+        v_schedule: str = "constant",
     ) -> None:
         self.num_steps = num_steps
         self.lr = lr
@@ -274,6 +312,11 @@ class InexactProxSGD(ProxSolver):
         # ‖∇Φ‖ estimate by √eval_batches; the same minibatches are reused at
         # both end-points so that ``ratio = last/first`` is comparable.
         self.eval_batches = max(1, int(eval_batches))
+        # Schedule for the α coefficient in front of v inside the prox cell.
+        # "constant" (=1) → canonical prox; "linear" (1 → 0 over num_steps)
+        # gradually relaxes the SARAH push so late inner steps refine f₁
+        # near w_outer.  See module docstring.
+        self.v_schedule = v_schedule
 
     def step(
         self,
@@ -285,11 +328,15 @@ class InexactProxSGD(ProxSolver):
         device: torch.device,
         eval_loader: DataLoader | None = None,
     ) -> Mapping[str, float]:
-        # Capture the outer iterate w_outer (the current model state) and the
-        # prox target z = w_outer − θ·v.  We do NOT move the model: SGD warm-
-        # starts from w_outer so the prox improves the iterate from the place
-        # the outer algorithm just visited (safer than starting at z when the
-        # inner solver only runs a few inexact steps).
+        # Capture the outer iterate w_outer (the current model state).
+        # The CANONICAL prox target z = w_outer − θ·v is precomputed once
+        # for diagnostics; the inner-loop direction is computed *without*
+        # materialising z each iteration (uses the algebraic form
+        #   ∇Φ_t(w) = ∇f₁(w) + (w − w_outer)/θ + α_t · v).
+        # We do NOT move the model: SGD warm-starts from w_outer so the
+        # prox improves the iterate from the place the outer algorithm
+        # just visited (safer than starting at z when the inner solver
+        # only runs a few inexact steps).
         w_outer = get_params(model)
         z = [wi - theta * vi for wi, vi in zip(w_outer, v)]
 
@@ -306,7 +353,7 @@ class InexactProxSGD(ProxSolver):
 
         clip_count = 0
         server_iter = iter(server_loader)
-        for _ in range(self.num_steps):
+        for it in range(self.num_steps):
             try:
                 x, y = next(server_iter)
             except StopIteration:
@@ -318,12 +365,15 @@ class InexactProxSGD(ProxSolver):
             loss = loss_fn(output, y)
             grads = torch.autograd.grad(loss, params)
 
+            alpha = _alpha_at(it, self.num_steps, self.v_schedule)
+
             with torch.no_grad():
                 # Build the per-parameter direction list, clip its global
                 # L2 norm if requested, then apply the (momentum-)SGD step.
                 directions: list[torch.Tensor] = []
-                for p, g, zi in zip(params, grads, z):
-                    d = g + (p.data - zi) / theta
+                for p, g, w_out_i, v_i in zip(params, grads, w_outer, v):
+                    # ∇Φ_t(w) = ∇f₁(w) + (w − w_outer)/θ + α_t · v
+                    d = g + (p.data - w_out_i) / theta + alpha * v_i
                     if self.weight_decay > 0:
                         d = d + self.weight_decay * p.data
                     directions.append(d)
@@ -364,6 +414,7 @@ class InexactProxAdam(ProxSolver):
         weight_decay: float = 0.0,
         grad_clip: float = 0.0,
         eval_batches: int = 1,
+        v_schedule: str = "constant",
     ) -> None:
         self.num_steps = num_steps
         self.lr = lr
@@ -375,6 +426,8 @@ class InexactProxAdam(ProxSolver):
         self.grad_clip = grad_clip
         # See ``InexactProxSGD.eval_batches``.
         self.eval_batches = max(1, int(eval_batches))
+        # See ``InexactProxSGD.v_schedule``.
+        self.v_schedule = v_schedule
 
     def step(
         self,
@@ -416,11 +469,15 @@ class InexactProxAdam(ProxSolver):
 
             bias1 = 1 - b1 ** t
             bias2 = 1 - b2 ** t
+            # ``t`` here is 1-indexed (Adam bias correction); convert to the
+            # 0-indexed schedule index expected by ``_alpha_at``.
+            alpha = _alpha_at(t - 1, self.num_steps, self.v_schedule)
 
             with torch.no_grad():
                 directions: list[torch.Tensor] = []
-                for p, g, zi in zip(params, grads, z):
-                    d = g + (p.data - zi) / theta
+                for p, g, w_out_i, v_i in zip(params, grads, w_outer, v):
+                    # ∇Φ_t(w) = ∇f₁(w) + (w − w_outer)/θ + α_t · v
+                    d = g + (p.data - w_out_i) / theta + alpha * v_i
                     if self.weight_decay > 0:
                         d = d + self.weight_decay * p.data
                     directions.append(d)
