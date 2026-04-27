@@ -10,4 +10,4 @@ name: uniform
 # Since the server's f₁ enters the prox subproblem at every outer step, giving
 # it more data makes the algorithm's "server is a special / more powerful
 # node" assumption explicit and usually improves quality on CIFAR-10.
-server_fraction: null
+server_fraction: 0.5

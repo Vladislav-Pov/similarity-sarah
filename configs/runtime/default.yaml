@@ -1,13 +1,13 @@
 device: auto
 eval_every: 1
 log_every: 1
-num_workers: 2
+num_workers: 4
 
 # Two canonical batch sizes used by the training loaders:
 #   * ``batch_size``       — small minibatch for noisy/inner training (prox SGD).
 #   * ``large_batch_size`` — large minibatch for low-variance gradient
 #                            estimates that feed the SARAH recursion.
-batch_size: 256
+batch_size: 512
 large_batch_size: 512
 
 # Server — *gradient* loader used inside the SARAH recursion (∇f₁ at w_t/w_{t-1}).
@@ -36,8 +36,8 @@ prox_lr_schedule:
   gamma: 0.1
 
 wandb:
-  enabled: false
-  project: similarity-sarah
+  enabled: true
+  project: amir_debug
   entity: chirkov
   group: null
   tags: []

@@ -1,6 +1,6 @@
 name: cifar10
 data_dir: ./data
-val_fraction: 0.1
+val_fraction: 0.2
 # Apply RandomCrop+HorizontalFlip on the server's *prox* loader only.
 # The server's *gradient* loader (used inside the SARAH recursion) and
 # all client loaders stay deterministic — the SARAH difference
@@ -8,4 +8,4 @@ val_fraction: 0.1
 # well-defined at both iterates.  Augmentation inside the prox SGD/Adam
 # loop is harmless (the inner loop is already stochastic w.r.t. the
 # minibatch) and significantly improves CIFAR-10 generalisation.
-augment_server: true
+augment_server: false

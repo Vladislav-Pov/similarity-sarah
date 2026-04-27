@@ -2,18 +2,18 @@ name: batched_nfg_sarah
 
 num_clients: 10
 batch_size_clients: 1
-theta: 0.05
-num_epochs: 100
+theta: 0.5
+num_epochs: 50
 
 # ── Inexact proximal solver ────────────────────────────────────────────
 # ``prox_solver`` selects between SGD-with-momentum ("sgd") and Adam ("adam").
 # Default is SGD with Nesterov-like Polyak momentum + small weight decay,
 # which dramatically improves the inner-prox convergence on deep nets and
 # is the main reason the model can reach >0.9 accuracy on CIFAR-10.
-prox_solver: adam
-prox_num_steps: 50
-prox_lr: 0.05
-prox_momentum: 0.9
+prox_solver: sgd
+prox_num_steps: 80
+prox_lr: 0.005
+prox_momentum: 0.0
 prox_weight_decay: 0.0
 # Global L2-norm clip on the inner-step direction (∇Φ).  ``0`` disables
 # clipping.  Without it, a single noisy minibatch can produce a large gradient
@@ -21,14 +21,14 @@ prox_weight_decay: 0.0
 # gradient region → next step bigger → …).  A clip threshold of ~1.0 is a
 # common stability anchor: almost never fires when the prox is well-conditioned,
 # kicks in exactly when it shouldn't have failed.
-prox_grad_clip: 1.0
+prox_grad_clip: 2.0
 # How many fixed eval mini-batches to use for the prox-grad diagnostic
 # (``prox_grad_norm_first/last``).  Increasing reduces the noise of the
 # ‖∇Φ‖ estimate by 1/√eval_batches at the cost of one extra forward+backward
 # per batch on each prox call (cheap relative to ``prox_num_steps``).  The
 # *same* batches are reused at start and end so that ratio = last/first is
 # directly comparable.  Recommended: 4-8.
-prox_eval_batches: 4
+prox_eval_batches: 8
 # Schedule for the α coefficient in front of v inside the prox cell:
 #   "constant" — α = 1 throughout (canonical prox).
 #   "linear"   — α linearly decays 1 → 0 across ``prox_num_steps``;
