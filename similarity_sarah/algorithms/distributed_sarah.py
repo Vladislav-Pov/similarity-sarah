@@ -1,9 +1,10 @@
-"""Distributed SARAH baseline with minibatch-gradient estimates.
+"""Distributed SARAH baseline.
 
-At the start of every epoch the server aggregates one stochastic gradient per
-node (single minibatch per loader).  Inner steps use a SARAH-style correction
-with partial client sampling and a plain gradient-descent step (no proximal
-operator).
+At the start of every epoch the server aggregates *exact* local full
+gradients from every node (one full pass per loader, accumulating
+sample-weighted gradients).  Inner steps use a SARAH-style correction
+with partial client sampling and a plain gradient-descent step (no
+proximal operator).
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from similarity_sarah.utils import (
     add_params_,
     clone_params,
     compute_batch_gradient,
+    compute_full_gradient,
     get_params,
     set_params,
     zeros_like_params,
@@ -30,15 +32,20 @@ logger = logging.getLogger(__name__)
 
 
 class DistributedSARAH(BaseAlgorithm):
-    """Distributed SARAH with per-node minibatch gradient at epoch start.
+    """Distributed SARAH with full-gradient anchor at epoch start.
 
     Epoch structure:
-        v₀ ≈ (1/n) Σᵢ ∇fᵢ(w₀)   (one minibatch per node)
+        v₀ = (1/n) Σᵢ ∇fᵢ(w₀)   (FULL local gradient on each node — one
+                                  pass over the entire local partition).
         for t = 0 … K−1:
             w_{t+1} = wₜ − η·vₜ
-            Δ_server = ∇f₁(w_{t+1}) − ∇f₁(wₜ)
+            Δ_server = ∇f₁(w_{t+1}) − ∇f₁(wₜ)        (one minibatch on server,
+                                                       same xy at both points)
             Δ_clients = (1/|Bₜ|) Σ_{i∈Bₜ} [∇fᵢ(w_{t+1}) − ∇fᵢ(wₜ)]
-            v_{t+1} = vₜ + (1/n)·Δ_server + ((n−1)/n)·Δ_clients
+                                                      (one minibatch per
+                                                       sampled client, same
+                                                       xy at both points)
+            v_{t+1} = vₜ + (1/n)·Δ_server + ((n−1)/(n·B))·Σ Δ_clients
     """
 
     def __init__(
@@ -140,17 +147,31 @@ class DistributedSARAH(BaseAlgorithm):
 
     # ------------------------------------------------------------------
     def _compute_global_gradient(self) -> ParamList:
-        """(1/n) Σᵢ stochastic ∇fᵢ(w) — one minibatch per node."""
+        """(1/n) Σᵢ ∇fᵢ(w) — *exact* local full gradient on every node.
+
+        Each call to ``compute_full_gradient(loader, ...)`` iterates the
+        loader to exhaustion (one full pass) and accumulates per-batch
+        gradients weighted by batch size, then divides by total samples —
+        equivalent to the deterministic per-node gradient ``∇fᵢ(w)``.
+
+        The matching pseudocode line is
+
+            g_i^k = ∇f_i(x^k)            ← FULL local gradient
+
+        With deterministic per-node gradients, ``v₀`` has zero variance
+        from anchor estimation; the only stochasticity left is in the
+        recursive Δ-updates.
+        """
         n = self.total_nodes
         global_grad = zeros_like_params(self.model)
 
-        grad_server = compute_batch_gradient(
+        grad_server = compute_full_gradient(
             self.model, self.server_grad_loader, self.loss_fn, self.device,
         )
         add_params_(global_grad, grad_server, alpha=1.0 / n)
 
         for loader in self.client_loaders:
-            g = compute_batch_gradient(
+            g = compute_full_gradient(
                 self.model, loader, self.loss_fn, self.device,
             )
             add_params_(global_grad, g, alpha=1.0 / n)
