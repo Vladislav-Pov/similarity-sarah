@@ -36,6 +36,7 @@ from similarity_sarah.utils import (
     add_params_,
     clone_params,
     compute_batch_gradient,
+    compute_full_gradient,
     compute_param_norm,
     get_params,
     set_params,
@@ -93,15 +94,21 @@ class SVRS(BaseAlgorithm):
 
     # ------------------------------------------------------------------
     def _refresh_anchor(self) -> None:
-        """Compute ``g_ref = (1/n) Σ_i ∇(f_i − f₁)(w_ref)``."""
+        """Compute ``g_ref = (1/n) Σ_i ∇(f_i − f₁)(w_ref)`` exactly.
+
+        Uses :func:`compute_full_gradient` (one full pass per loader) so that
+        ``g_ref`` is deterministic — no minibatch noise carries into ``v_t``
+        through the anchor.  Matches the paper's ``∇f(w_0)`` precomputation
+        (just shifted by ``∇f_1(w_0)``); see Algorithm 1 of Khaled & Jin 2023.
+        """
         n = self.total_nodes
         set_params(self.model, self._w_ref)
         g_ref = zeros_like_params(self.model)
-        grad_f1 = compute_batch_gradient(
+        grad_f1 = compute_full_gradient(
             self.model, self.server_grad_loader, self.loss_fn, self.device,
         )
         for loader in self.client_loaders:
-            g = compute_batch_gradient(
+            g = compute_full_gradient(
                 self.model, loader, self.loss_fn, self.device,
             )
             for tg, gi, g1 in zip(g_ref, g, grad_f1):

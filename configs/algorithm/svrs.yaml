@@ -1,15 +1,27 @@
 name: svrs
 
+# Defaults are aligned with configs/algorithm/batched_nfg_sarah.yaml so the
+# two algorithms can be compared head-to-head.  The prox subproblem is
+# identical (server-side prox_{θ f₁}); only the construction of v differs:
+# BNFG uses recursive accumulation, SVRS uses a per-epoch anchor (g_ref).
 num_clients: 10
 batch_size_clients: 1
-theta: 0.02
-num_epochs: 100
+theta: 0.5
+num_epochs: 50
 
-prox_num_steps: 50
-prox_lr: 0.002
-prox_momentum: 0.9
-prox_weight_decay: 0.0
+# ── Inexact proximal solver ────────────────────────────────────────────
+# Same solver and same hyper-parameters as BNFG so any quality difference
+# is purely from the algorithmic change (recursive vs. anchor v).
 prox_solver: sgd
-prox_grad_clip: 1.0
-prox_eval_batches: 4
+prox_num_steps: 80
+prox_lr: 0.005
+prox_momentum: 0.0
+prox_weight_decay: 0.0
+# Global L2-norm clip on the inner-step direction (∇Φ).
+prox_grad_clip: 2.0
+# Number of fixed eval mini-batches for the prox-grad diagnostic (variance
+# of ‖∇Φ‖ estimate shrinks as 1/√eval_batches).
+prox_eval_batches: 8
+# Schedule for the α coefficient in front of v inside the prox cell.
+# See batched_nfg_sarah.yaml for the explanation.
 prox_v_schedule: constant

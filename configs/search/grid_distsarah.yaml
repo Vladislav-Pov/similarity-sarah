@@ -1,0 +1,13 @@
+# Grid search for distributed_sarah only.  Single knob: lr (log-spaced).
+enabled: true
+method: grid
+max_epochs: 50
+num_trials: 100
+wandb_project: similarity-sarah
+wandb_group: "dist-grid-${now:%Y%m%d-%H%M%S}"
+
+shared:
+  batch_size_clients: [1]
+
+distributed_sarah:
+  lr: [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]

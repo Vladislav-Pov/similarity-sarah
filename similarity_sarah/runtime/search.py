@@ -157,22 +157,29 @@ class GridSearch:
         # Materialise grids — ``_grid`` returns one-shot iterators and nested
         # loops would exhaust inner iterators after the first outer step.
         shared_grid = list(_grid(_coerce_dict(getattr(self.cfg, "shared", None))))
-        batched_grid = list(
-            _grid(_coerce_dict(getattr(self.cfg, "batched_nfg_sarah", None))),
-        )
+        if "batched_nfg_sarah" in self.cfg and self.cfg.batched_nfg_sarah is not None:
+            batched_grid = list(_grid(_coerce_dict(self.cfg.batched_nfg_sarah)))
+        else:
+            batched_grid = [{}]
         if "svrs" in self.cfg and self.cfg.svrs is not None:
             svrs_grid = list(_grid(_coerce_dict(self.cfg.svrs)))
         else:
             svrs_grid = [{}]
+        if "distributed_sarah" in self.cfg and self.cfg.distributed_sarah is not None:
+            dist_grid = list(_grid(_coerce_dict(self.cfg.distributed_sarah)))
+        else:
+            dist_grid = [{}]
 
         for shared_params in shared_grid:
             for batched_params in batched_grid:
                 for svrs_params in svrs_grid:
-                    params: dict[str, object] = {}
-                    params.update(_join_params("shared", shared_params))
-                    params.update(_join_params("batched_nfg_sarah", batched_params))
-                    params.update(_join_params("svrs", svrs_params))
-                    yield params
+                    for dist_params in dist_grid:
+                        params: dict[str, object] = {}
+                        params.update(_join_params("shared", shared_params))
+                        params.update(_join_params("batched_nfg_sarah", batched_params))
+                        params.update(_join_params("svrs", svrs_params))
+                        params.update(_join_params("distributed_sarah", dist_params))
+                        yield params
 
     def run(
         self,
@@ -310,6 +317,7 @@ def _build_trial_cfgs(
     shared: dict[str, object] = {}
     batched_over: dict[str, object] = {}
     svrs_over: dict[str, object] = {}
+    dist_over: dict[str, object] = {}
     for key, value in params.items():
         v = _to_python(value)
         if key.startswith("shared."):
@@ -318,20 +326,25 @@ def _build_trial_cfgs(
             batched_over[key.split(".", 1)[1]] = v
         elif key.startswith("svrs."):
             svrs_over[key.split(".", 1)[1]] = v
+        elif key.startswith("distributed_sarah."):
+            dist_over[key.split(".", 1)[1]] = v
 
-    batched_cfg = OmegaConf.merge(
-        _algorithm_yaml_defaults("batched_nfg_sarah"), base_algo,
-    )
-    batched_cfg.name = "batched_nfg_sarah"
-    for k, v in shared.items():
-        batched_cfg[k] = v
-    for k, v in batched_over.items():
-        batched_cfg[k] = v
-    batched_cfg.num_epochs = min(int(batched_cfg.num_epochs), max_epochs)
+    out: dict[str, DictConfig] = {}
 
-    out: dict[str, DictConfig] = {
-        "batched_nfg_sarah": _override_algorithm(base_cfg, batched_cfg),
-    }
+    # Each algorithm block is optional — include it only if present in
+    # the search yaml.  Trials train ALL included algorithms sequentially
+    # and the trial score is the average of their best_val_accuracy.
+    if "batched_nfg_sarah" in search_cfg and search_cfg.batched_nfg_sarah is not None:
+        batched_cfg = OmegaConf.merge(
+            _algorithm_yaml_defaults("batched_nfg_sarah"), base_algo,
+        )
+        batched_cfg.name = "batched_nfg_sarah"
+        for k, v in shared.items():
+            batched_cfg[k] = v
+        for k, v in batched_over.items():
+            batched_cfg[k] = v
+        batched_cfg.num_epochs = min(int(batched_cfg.num_epochs), max_epochs)
+        out["batched_nfg_sarah"] = _override_algorithm(base_cfg, batched_cfg)
 
     if "svrs" in search_cfg and search_cfg.svrs is not None:
         svrs_cfg = OmegaConf.merge(
@@ -344,6 +357,24 @@ def _build_trial_cfgs(
             svrs_cfg[k] = v
         svrs_cfg.num_epochs = min(int(svrs_cfg.num_epochs), max_epochs)
         out["svrs"] = _override_algorithm(base_cfg, svrs_cfg)
+
+    if "distributed_sarah" in search_cfg and search_cfg.distributed_sarah is not None:
+        dist_cfg = OmegaConf.merge(
+            _algorithm_yaml_defaults("distributed_sarah"), OmegaConf.create(),
+        )
+        dist_cfg.name = "distributed_sarah"
+        for k, v in shared.items():
+            dist_cfg[k] = v
+        for k, v in dist_over.items():
+            dist_cfg[k] = v
+        dist_cfg.num_epochs = min(int(dist_cfg.num_epochs), max_epochs)
+        out["distributed_sarah"] = _override_algorithm(base_cfg, dist_cfg)
+
+    if not out:
+        raise ValueError(
+            "Search config must contain at least one of 'batched_nfg_sarah', "
+            "'svrs' or 'distributed_sarah' blocks (with parameters to search)."
+        )
 
     return out
 
@@ -374,6 +405,15 @@ def _sample_optuna_params(
         getattr(search_cfg, "svrs", None),
     ).items():
         full_name = f"svrs.{name}"
+        if _is_range_spec(value):
+            params[full_name] = _suggest_from_spec(trial, full_name, value)
+        else:
+            params[full_name] = trial.suggest_categorical(full_name, _as_list(value))
+
+    for name, value in _coerce_dict(
+        getattr(search_cfg, "distributed_sarah", None),
+    ).items():
+        full_name = f"distributed_sarah.{name}"
         if _is_range_spec(value):
             params[full_name] = _suggest_from_spec(trial, full_name, value)
         else:
