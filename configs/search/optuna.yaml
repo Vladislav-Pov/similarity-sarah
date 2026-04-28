@@ -5,6 +5,12 @@ num_trials: 30
 wandb_project: similarity-sarah
 wandb_group: "optuna-${now:%Y%m%d-%H%M%S}"
 
+# Persistent SQLite storage at optuna_studies/<study_name>.db.
+# Set storage_dir=null to disable; set study_name to a stable string
+# if you want to resume a previous sweep.
+storage_dir: optuna_studies
+study_name: null
+
 # ── Sampler / pruner ─────────────────────────────────────────────────
 sampler:
   kind: tpe                 # tpe | random

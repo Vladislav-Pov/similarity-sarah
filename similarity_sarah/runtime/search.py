@@ -258,11 +258,66 @@ class OptunaSearch:
         )
 
     # ------------------------------------------------------------------
+    def _resolve_storage(self) -> tuple[str | None, str]:
+        """Pick (storage URL, study name) from config.
+
+        Default behaviour: persist studies under
+        ``optuna_studies/<study_name>.db`` at the *repository root* (cwd
+        is the Hydra-managed run dir, so we anchor relative to the
+        original cwd if available, otherwise use cwd).  ``study_name``
+        defaults to ``wandb_group`` (which already includes a timestamp
+        like ``bnfg-optuna-20260429-123456``), so each launch gets its
+        own DB file but is resumable if you reuse the name.
+
+        Set ``search.storage_dir: null`` to disable persistence (study
+        kept in memory).  Set ``search.study_name: my-study`` to override
+        the auto-derived name.
+        """
+        import os
+
+        from hydra.core.hydra_config import HydraConfig
+
+        # Decide the study name.
+        study_name = OmegaConf.select(self.cfg, "study_name", default=None)
+        if not study_name:
+            study_name = OmegaConf.select(self.cfg, "wandb_group", default=None)
+        if not study_name:
+            from datetime import datetime
+            study_name = f"optuna-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        study_name = str(study_name)
+
+        # Anchor optuna dir on the original cwd (Hydra chdir's into
+        # outputs/<date>/<time>/, but we want a stable shared location).
+        try:
+            orig_cwd = HydraConfig.get().runtime.cwd
+        except Exception:
+            orig_cwd = os.getcwd()
+
+        storage_dir = OmegaConf.select(
+            self.cfg, "storage_dir", default="optuna_studies",
+        )
+        if storage_dir is None:
+            return None, study_name
+
+        storage_dir = str(storage_dir)
+        if not os.path.isabs(storage_dir):
+            storage_dir = os.path.join(orig_cwd, storage_dir)
+        os.makedirs(storage_dir, exist_ok=True)
+
+        db_path = os.path.join(storage_dir, f"{study_name}.db")
+        return f"sqlite:///{db_path}", study_name
+
     def run(
         self,
         evaluator: Callable[..., dict[str, object]],
     ) -> dict[str, object]:
+        import logging
         import optuna
+
+        # Silence noisy optuna info messages but keep ours.
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        local_logger = logging.getLogger(__name__)
 
         def objective(trial: "optuna.Trial") -> float:
             params = _sample_optuna_params(trial, self.cfg)
@@ -288,7 +343,22 @@ class OptunaSearch:
             trial.set_user_attr("result", result)
             return score
 
+        storage_url, study_name = self._resolve_storage()
+        if storage_url is not None:
+            local_logger.info(
+                "Optuna study persisted at %s  (study_name=%s)",
+                storage_url, study_name,
+            )
+        else:
+            local_logger.info(
+                "Optuna study running in-memory only (study_name=%s)",
+                study_name,
+            )
+
         study = optuna.create_study(
+            study_name=study_name,
+            storage=storage_url,
+            load_if_exists=True,
             direction="maximize",
             sampler=self._build_sampler(),
             pruner=self._build_pruner(),

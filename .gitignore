@@ -20,3 +20,6 @@ multirun/
 .vscode/
 .idea/
 wandb/
+
+# Optuna SQLite studies (search.py)
+optuna_studies/

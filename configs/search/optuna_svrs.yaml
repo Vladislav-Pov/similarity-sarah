@@ -12,6 +12,10 @@ num_trials: 12
 wandb_project: similarity-sarah
 wandb_group: "svrs-optuna-${now:%Y%m%d-%H%M%S}"
 
+# Persistent SQLite storage; see optuna_bnfg.yaml for details.
+storage_dir: optuna_studies
+study_name: null
+
 sampler:
   kind: tpe
   seed: 0

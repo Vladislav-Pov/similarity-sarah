@@ -8,6 +8,15 @@ num_trials: 12
 wandb_project: similarity-sarah
 wandb_group: "bnfg-optuna-${now:%Y%m%d-%H%M%S}"
 
+# Persistent storage for the Optuna study (SQLite).  Path is
+# <storage_dir>/<study_name>.db, anchored at the repo root.
+# Set ``storage_dir: null`` to keep the study in memory only.
+# Set ``study_name`` to a stable string if you want to RESUME a sweep
+# after a crash; otherwise it defaults to ``wandb_group`` (which has a
+# timestamp ⇒ a fresh DB per launch).
+storage_dir: optuna_studies
+study_name: null
+
 sampler:
   kind: tpe
   seed: 0
