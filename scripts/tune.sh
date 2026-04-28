@@ -5,22 +5,24 @@
 # Overrides are semicolon-separated.  Common overrides (epochs, wandb)
 # are added automatically.  Edit the list to add/remove experiments.
 #
+# NAME must not contain '=' (Hydra grammar uses '=' as key/value
+# separator; we pass NAME via runtime.wandb.name).  Use '-' or '_'.
+#
 # Usage:
-#   GPU=0 ./scripts/tune.sh                      # run every entry
-#   GPU=1 EPOCHS=50 ./scripts/tune.sh            # all entries, 50 epochs each
-#   GPU=0 ./scripts/tune.sh theta=1.0 mom=0.5    # only the named entries
+#   CUDA_VISIBLE_DEVICES=0 ./scripts/tune.sh                 # run every entry
+#   CUDA_VISIBLE_DEVICES=7 EPOCHS=50 ./scripts/tune.sh       # all entries, 50 epochs each
+#   CUDA_VISIBLE_DEVICES=0 ./scripts/tune.sh theta-1.0 mom-0.5  # only the named entries
 #
 # Env vars:
-#   GPU           CUDA device id  (default: 0)
-#   EPOCHS        epochs per run  (default: 30)
-#   WANDB_GROUP   W&B group label (default: tune-<timestamp>)
-#   PYTHON        python binary   (default: python)
+#   CUDA_VISIBLE_DEVICES   GPU id(s) — inherited from caller (set externally).
+#   EPOCHS                 epochs per run  (default: 30)
+#   WANDB_GROUP            W&B group label (default: tune-<timestamp>)
+#   PYTHON                 python binary   (default: python)
 
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 [[ -f .venv/bin/activate ]] && source .venv/bin/activate
 
-export CUDA_VISIBLE_DEVICES="${GPU:-0}"
 PYTHON="${PYTHON:-python}"
 EPOCHS="${EPOCHS:-30}"
 GROUP="${WANDB_GROUP:-tune-$(date +%Y%m%d-%H%M%S)}"
@@ -32,12 +34,18 @@ GROUP="${WANDB_GROUP:-tune-$(date +%Y%m%d-%H%M%S)}"
 # theta=0.5, prox_lr=0.005, prox_num_steps=80, prox_momentum=0,
 # prox_grad_clip=2.0, prox_eval_batches=8, prox_v_schedule=constant).
 CONFIGS=(
-  "theta=1.0    | algorithm.theta=1.0  ; algorithm.prox_lr=0.005"
-  "theta=2.0    | algorithm.theta=2.0  ; algorithm.prox_lr=0.003"
-  "theta=0.2    | algorithm.theta=0.2  ; algorithm.prox_lr=0.012"
-  "numsteps=160 | algorithm.prox_num_steps=160"
-  "mom=0.5      | algorithm.prox_momentum=0.5"
-  "vlinear      | algorithm.prox_v_schedule=linear"
+  # Round 1 — baseline grid (already done):
+  #   theta-1.0     mediocre
+  #   theta-2.0     worse
+  #   theta-0.2     BEST so far (≈0.654)
+  #   vlinear       good (combine in round 2)
+  # Round 2 — explore around theta=0.2 + combine with vlinear:
+  "theta-0.1            | algorithm.theta=0.1  ; algorithm.prox_lr=0.020"
+  "theta-0.3            | algorithm.theta=0.3  ; algorithm.prox_lr=0.008"
+  "theta-0.2-lr0.020    | algorithm.theta=0.2  ; algorithm.prox_lr=0.020"
+  "theta-0.2-numsteps160| algorithm.theta=0.2  ; algorithm.prox_lr=0.012 ; algorithm.prox_num_steps=160"
+  "theta-0.2-vlinear    | algorithm.theta=0.2  ; algorithm.prox_lr=0.012 ; algorithm.prox_v_schedule=linear"
+  "theta-0.5-vlinear    | algorithm.prox_v_schedule=linear"
 )
 
 # ── Run loop ───────────────────────────────────────────────────────────
@@ -54,13 +62,18 @@ trim() { echo "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
 echo "── tune sweep"
 echo "── group:  $GROUP"
 echo "── epochs: $EPOCHS"
-echo "── GPU:    $CUDA_VISIBLE_DEVICES"
+echo "── CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-<unset>}"
 
 for row in "${CONFIGS[@]}"; do
   name="$(trim "${row%%|*}")"
   overrides="${row#*|}"
 
   want "$name" || continue
+
+  if [[ "$name" == *"="* ]]; then
+    echo "✗ $name contains '=' — Hydra rejects that in values, skipping"
+    continue
+  fi
 
   IFS=';' read -ra raw_args <<< "$overrides"
   args=()
