@@ -5,6 +5,10 @@ name: svrs
 # identical (server-side prox_{θ f₁}); only the construction of v differs:
 # BNFG uses recursive accumulation, SVRS uses a per-epoch anchor (g_ref).
 num_clients: 10
+# NOTE: Algorithm 1 of Lin et al. 2023 has exactly one client per inner
+# step (i_t ∼ Unif([n])).  This field is kept for API parity with BNFG /
+# distributed_sarah but is forced to 1 internally; values > 1 trigger a
+# warning and are ignored.
 batch_size_clients: 1
 theta: 0.5
 num_epochs: 50

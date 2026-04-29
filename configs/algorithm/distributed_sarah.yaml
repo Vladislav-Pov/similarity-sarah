@@ -1,6 +1,11 @@
 name: distributed_sarah
 
+# Defaults are aligned with configs/algorithm/batched_nfg_sarah.yaml so the
+# two algorithms can be compared head-to-head: same number of clients, same
+# B = 1 (one client per inner step → K = num_clients = 10 outer steps per
+# epoch), same epoch budget.  Data loaders, server fraction (in
+# configs/partition/uniform.yaml), val split etc. are inherited globally.
 num_clients: 10
-batch_size_clients: 2
+batch_size_clients: 1
 lr: 0.01
-num_epochs: 100
+num_epochs: 50

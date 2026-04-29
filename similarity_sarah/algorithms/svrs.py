@@ -1,23 +1,28 @@
 """SVRS — Server-side Variance-Reduced Similarity baseline.
 
-Reference: "SVRS" (Khaled & Jin, 2023) — https://arxiv.org/pdf/2304.07504
+Reference: Lin, Karagulyan, Richtárik, "Stochastic Distributed
+Optimization under Average Second-order Similarity: Algorithms and
+Analysis" — https://arxiv.org/pdf/2304.07504  (Algorithm 1, SVRS¹ᵉᵖ).
 
-Compared to *Batched No Full Grad SARAH* the algorithm differs in three
-places:
+Compared to *Batched No Full Grad SARAH* the algorithm differs in:
 
-1. At the start of each outer round it computes (or refreshes) a
-   *reference* gradient estimator at an anchor point ``w_ref``.
-2. The inner-loop correction is built relative to ``w_ref`` rather than
-   to ``w_{t-1}`` (no recursive coupling between consecutive inner
-   steps).
-3. The proximal step is taken on the server's local function ``f₁``
-   exactly like in our main algorithm, so the existing
-   :class:`ProxSolver` can be re-used.
+1. At the start of each outer round we compute the deterministic
+   anchor ``g_ref = (1/n) Σᵢ ∇(fᵢ − f₁)(w_ref)`` (full local
+   gradients on each node — see ``_refresh_anchor``).
+2. The epoch length ``T ∼ Geom(p)`` with ``p = 1/num_clients``;
+   ``E[T] = num_clients``.  This replaces the deterministic
+   permutation-based pass we used previously.
+3. Each inner step samples ONE client ``i_t ∼ Unif([num_clients])``
+   (Algorithm 1 of the paper has no client-batching) and builds
+   ``v_t = g_ref + ∇(f_{i_t} − f₁)(w_t) − ∇(f_{i_t} − f₁)(w_ref)``.
+4. The proximal step is taken on the server's local function ``f₁``
+   exactly like in BNFG, so the existing :class:`ProxSolver` is
+   re-used.
 
-As in the main algorithm, the SVRS variance-reduction step
-``∇f_i(w_t) − ∇f_i(w_ref)`` is evaluated on the **same** client
-minibatch at both ``w_t`` and ``w_ref``; otherwise the correction term
-behaves like a fresh stochastic gradient with no variance reduction.
+The SARAH-style same-batch telescope ``∇f_i(w_t) − ∇f_i(w_ref)`` uses
+one fixed minibatch per client per step (pre-sampled and reused at
+both points) — without that, the correction would behave like a fresh
+stochastic gradient with no variance reduction.
 """
 
 from __future__ import annotations
@@ -30,7 +35,6 @@ from torch.utils.data import DataLoader
 
 from similarity_sarah.algorithms.base import BaseAlgorithm
 from similarity_sarah.runtime.prox_solver import ProxSolver
-from similarity_sarah.runtime.scheduler import sample_client_batches
 from similarity_sarah.utils import (
     ParamList,
     add_params_,
@@ -56,7 +60,18 @@ class SVRS(BaseAlgorithm):
         prox_solver: ProxSolver,
     ) -> None:
         self.theta = theta
-        self.batch_size_clients = batch_size_clients
+        # Algorithm 1 of Lin et al. 2023 has *one* client per inner step
+        # (i_t ∼ Unif([n])).  We keep ``batch_size_clients`` as a no-op
+        # field for API parity with BNFG / distributed_sarah, but force
+        # B = 1 internally and warn if the user asked for more.
+        if batch_size_clients != 1:
+            logger.warning(
+                "SVRS: batch_size_clients=%d ignored — Algorithm 1 of the "
+                "original paper samples exactly one client per inner step "
+                "(B=1).  Forcing B=1.",
+                batch_size_clients,
+            )
+        self.batch_size_clients = 1
         self.prox_solver = prox_solver
 
         self.model: nn.Module | None = None
@@ -115,6 +130,27 @@ class SVRS(BaseAlgorithm):
                 tg.add_(gi - g1, alpha=1.0 / n)
         self._g_ref = g_ref
 
+    def _sample_epoch_length(self) -> int:
+        """Draw T ∼ Geom(p = 1/num_clients), shifted so that T ≥ 1.
+
+        Matches Algorithm 1 of Lin et al. 2023 (SVRS¹ᵉᵖ): the inner-loop
+        horizon between anchor refreshes is a geometric random variable
+        with ``E[T] = 1/p = num_clients``.  This replaces the deterministic
+        permutation-based pass we used before (which always covered every
+        client exactly once per epoch).
+
+        Using ``num_clients`` for ``p`` (rather than ``total_nodes``)
+        because in our setup the server is always queried inside the prox
+        and is never one of the i_t-sampled components.
+        """
+        p = torch.tensor(1.0 / max(self.num_clients, 1))
+        raw = torch.distributions.Geometric(probs=p).sample().item()
+        return int(raw) + 1
+
+    def _sample_one_client(self) -> int:
+        """``i_t ∼ Unif([num_clients])`` — a single uniform draw."""
+        return int(torch.randint(low=0, high=self.num_clients, size=(1,)).item())
+
     def run_epoch(self, epoch: int) -> dict[str, float]:
         assert self.model is not None
 
@@ -122,51 +158,48 @@ class SVRS(BaseAlgorithm):
         self._w_ref = get_params(self.model)
         self._refresh_anchor()
 
-        batches = sample_client_batches(self.num_clients, self.batch_size_clients)
-        K = len(batches)
-        n = self.total_nodes
-        B = self.batch_size_clients
+        # Random epoch length per the original SVRS paper.
+        T = self._sample_epoch_length()
+        logger.debug(
+            "SVRS epoch %d: sampled T=%d (E[T]=%d)", epoch, T, self.num_clients,
+        )
 
-        for t, batch in enumerate(batches, start=1):
-            B_actual = len(batch)
+        for t in range(1, T + 1):
+            cid = self._sample_one_client()
             w_curr = get_params(self.model)
 
-            # Pre-sample one minibatch per node reused at w_curr and w_ref.
+            # Pre-sample one minibatch per node, reused at w_curr and w_ref.
             srv_xy = next(iter(self.server_grad_loader))
-            cli_xys = [next(iter(self.client_loaders[cid])) for cid in batch]
+            cli_xy = next(iter(self.client_loaders[cid]))
 
-            # ── stochastic similarity correction at w_t ──────────────
+            # ── ∇(f_i − f₁)(w_t) on shared minibatch ─────────────────
             grad_f1_curr = compute_batch_gradient(
                 self.model, self.server_grad_loader, self.loss_fn, self.device,
                 xy=srv_xy,
             )
-            sum_diff_curr = zeros_like_params(self.model)
-            for cid, cli_xy in zip(batch, cli_xys):
-                g_curr = compute_batch_gradient(
-                    self.model, self.client_loaders[cid],
-                    self.loss_fn, self.device, xy=cli_xy,
-                )
-                for sd, gc, g1 in zip(sum_diff_curr, g_curr, grad_f1_curr):
-                    sd.add_(gc - g1)
+            g_curr = compute_batch_gradient(
+                self.model, self.client_loaders[cid],
+                self.loss_fn, self.device, xy=cli_xy,
+            )
+            diff_curr = [gc - g1 for gc, g1 in zip(g_curr, grad_f1_curr)]
 
+            # ── ∇(f_i − f₁)(w_ref) on the SAME minibatch ─────────────
             set_params(self.model, self._w_ref)
             grad_f1_ref = compute_batch_gradient(
                 self.model, self.server_grad_loader, self.loss_fn, self.device,
                 xy=srv_xy,
             )
-            sum_diff_ref = zeros_like_params(self.model)
-            for cid, cli_xy in zip(batch, cli_xys):
-                g_ref_b = compute_batch_gradient(
-                    self.model, self.client_loaders[cid],
-                    self.loss_fn, self.device, xy=cli_xy,
-                )
-                for sd, gr, g1 in zip(sum_diff_ref, g_ref_b, grad_f1_ref):
-                    sd.add_(gr - g1)
+            g_ref_b = compute_batch_gradient(
+                self.model, self.client_loaders[cid],
+                self.loss_fn, self.device, xy=cli_xy,
+            )
+            diff_ref = [gr - g1 for gr, g1 in zip(g_ref_b, grad_f1_ref)]
 
-            # v_t = g_ref + (1/B) ( Σ_curr - Σ_ref )
+            # v_t = g_ref + (∇(f_i − f₁)(w_t) − ∇(f_i − f₁)(w_ref))
+            # — single client, no /B division.
             v = clone_params(self._g_ref)
-            for vi, sdc, sdr in zip(v, sum_diff_curr, sum_diff_ref):
-                vi.add_(sdc - sdr, alpha=1.0 / B_actual)
+            for vi, dc, dr in zip(v, diff_curr, diff_ref):
+                vi.add_(dc - dr)
 
             set_params(self.model, w_curr)
             self.prox_solver.step(
@@ -176,8 +209,8 @@ class SVRS(BaseAlgorithm):
             )
 
             logger.debug(
-                "SVRS epoch %d step %d/%d ‖v‖=%.3e",
-                epoch, t, K, compute_param_norm(v),
+                "SVRS epoch %d step %d/%d  cid=%d  ‖v‖=%.3e",
+                epoch, t, T, cid, compute_param_norm(v),
             )
 
-        return {"epoch": float(epoch), "inner_steps": float(K)}
+        return {"epoch": float(epoch), "inner_steps": float(T)}
