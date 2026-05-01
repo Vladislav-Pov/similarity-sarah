@@ -11,7 +11,7 @@ num_clients: 10
 # warning and are ignored.
 batch_size_clients: 1
 theta: 0.5
-num_epochs: 50
+num_epochs: 100
 
 # ── Inexact proximal solver ────────────────────────────────────────────
 # Same solver and same hyper-parameters as BNFG so any quality difference

@@ -2,16 +2,16 @@
 # so prox knobs (lr, num_steps, etc.) transfer; we mostly probe theta.
 enabled: true
 method: grid
-max_epochs: 30
+max_epochs: 100
 num_trials: 100
-wandb_project: similarity-sarah
+wandb_project: svrs
 wandb_group: "svrs-grid-${now:%Y%m%d-%H%M%S}"
 
 shared:
   batch_size_clients: [1]
 
 svrs:
-  theta:          [0.1, 0.2, 0.5, 1.0]
-  prox_lr:        [0.005, 0.012]
+  theta:          [0.1, 0.2, 0.4, 0.5, 1.0]
+  prox_lr:        [0.0005, 0.001,0.005, 0.012,0.02]
   prox_num_steps: [80]
   prox_v_schedule: [constant, linear]

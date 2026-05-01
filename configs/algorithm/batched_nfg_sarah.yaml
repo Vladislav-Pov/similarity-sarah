@@ -3,7 +3,7 @@ name: batched_nfg_sarah
 num_clients: 10
 batch_size_clients: 1
 theta: 0.5
-num_epochs: 50
+num_epochs: 100
 
 # ── Inexact proximal solver ────────────────────────────────────────────
 # ``prox_solver`` selects between SGD-with-momentum ("sgd") and Adam ("adam").
@@ -28,7 +28,7 @@ prox_grad_clip: 2.0
 # per batch on each prox call (cheap relative to ``prox_num_steps``).  The
 # *same* batches are reused at start and end so that ratio = last/first is
 # directly comparable.  Recommended: 4-8.
-prox_eval_batches: 8
+prox_eval_batches: 4
 # Schedule for the α coefficient in front of v inside the prox cell:
 #   "constant" — α = 1 throughout (canonical prox).
 #   "linear"   — α linearly decays 1 → 0 across ``prox_num_steps``;
