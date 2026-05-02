@@ -1,0 +1,14 @@
+# Grid search for "unfair" FedAvg only (single-gradient version).
+# Single knob: lr (and optionally include_server flavour).
+enabled: true
+method: grid
+max_epochs: 50
+num_trials: 100
+wandb_project: similarity-sarah
+wandb_group: "fedavg-grid-${now:%Y%m%d-%H%M%S}"
+
+shared:
+  batch_size_clients: [1]
+
+fedavg:
+  lr: [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]

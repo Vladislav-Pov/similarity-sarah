@@ -23,3 +23,13 @@ wandb/
 
 # Optuna SQLite studies (search.py)
 optuna_studies/
+
+# macOS
+.DS_Store
+
+# Claude Code local state
+.claude/
+
+# Third-party reference repo (cloned locally for inspection / adaptation;
+# do NOT commit into similarity-sarah)
+AccVRS/

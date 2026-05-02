@@ -1,0 +1,18 @@
+name: fedavg
+
+# "Unfair" FedAvg: each round, sampled clients send ONE gradient at w_r
+# (no local steps), the server averages and takes one SGD step.  This is
+# synchronous mini-batch SGD — no communication advantage over plain
+# distributed SGD.  Useful as a clean lower-bound baseline.
+#
+# Defaults aligned with our other algorithms (B=1, num_epochs=50) so the
+# epoch count and per-round communication footprint match.
+num_clients: 10
+batch_size_clients: 1
+lr: 0.01
+num_epochs: 50
+
+# Whether the server's f_1 also contributes ∇f_1(w_r) to the round's
+# average.  True ⇒ matches our SVRS / distributed_sarah convention
+# (server is always queried).  False ⇒ literal McMahan-style FedAvg.
+include_server: true

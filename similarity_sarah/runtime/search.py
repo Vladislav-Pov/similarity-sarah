@@ -169,17 +169,23 @@ class GridSearch:
             dist_grid = list(_grid(_coerce_dict(self.cfg.distributed_sarah)))
         else:
             dist_grid = [{}]
+        if "fedavg" in self.cfg and self.cfg.fedavg is not None:
+            fedavg_grid = list(_grid(_coerce_dict(self.cfg.fedavg)))
+        else:
+            fedavg_grid = [{}]
 
         for shared_params in shared_grid:
             for batched_params in batched_grid:
                 for svrs_params in svrs_grid:
                     for dist_params in dist_grid:
-                        params: dict[str, object] = {}
-                        params.update(_join_params("shared", shared_params))
-                        params.update(_join_params("batched_nfg_sarah", batched_params))
-                        params.update(_join_params("svrs", svrs_params))
-                        params.update(_join_params("distributed_sarah", dist_params))
-                        yield params
+                        for fedavg_params in fedavg_grid:
+                            params: dict[str, object] = {}
+                            params.update(_join_params("shared", shared_params))
+                            params.update(_join_params("batched_nfg_sarah", batched_params))
+                            params.update(_join_params("svrs", svrs_params))
+                            params.update(_join_params("distributed_sarah", dist_params))
+                            params.update(_join_params("fedavg", fedavg_params))
+                            yield params
 
     def run(
         self,
@@ -388,6 +394,7 @@ def _build_trial_cfgs(
     batched_over: dict[str, object] = {}
     svrs_over: dict[str, object] = {}
     dist_over: dict[str, object] = {}
+    fedavg_over: dict[str, object] = {}
     for key, value in params.items():
         v = _to_python(value)
         if key.startswith("shared."):
@@ -398,6 +405,8 @@ def _build_trial_cfgs(
             svrs_over[key.split(".", 1)[1]] = v
         elif key.startswith("distributed_sarah."):
             dist_over[key.split(".", 1)[1]] = v
+        elif key.startswith("fedavg."):
+            fedavg_over[key.split(".", 1)[1]] = v
 
     out: dict[str, DictConfig] = {}
 
@@ -440,10 +449,23 @@ def _build_trial_cfgs(
         dist_cfg.num_epochs = min(int(dist_cfg.num_epochs), max_epochs)
         out["distributed_sarah"] = _override_algorithm(base_cfg, dist_cfg)
 
+    if "fedavg" in search_cfg and search_cfg.fedavg is not None:
+        fedavg_cfg = OmegaConf.merge(
+            _algorithm_yaml_defaults("fedavg"), OmegaConf.create(),
+        )
+        fedavg_cfg.name = "fedavg"
+        for k, v in shared.items():
+            fedavg_cfg[k] = v
+        for k, v in fedavg_over.items():
+            fedavg_cfg[k] = v
+        fedavg_cfg.num_epochs = min(int(fedavg_cfg.num_epochs), max_epochs)
+        out["fedavg"] = _override_algorithm(base_cfg, fedavg_cfg)
+
     if not out:
         raise ValueError(
             "Search config must contain at least one of 'batched_nfg_sarah', "
-            "'svrs' or 'distributed_sarah' blocks (with parameters to search)."
+            "'svrs', 'distributed_sarah' or 'fedavg' blocks (with parameters "
+            "to search)."
         )
 
     return out
@@ -484,6 +506,15 @@ def _sample_optuna_params(
         getattr(search_cfg, "distributed_sarah", None),
     ).items():
         full_name = f"distributed_sarah.{name}"
+        if _is_range_spec(value):
+            params[full_name] = _suggest_from_spec(trial, full_name, value)
+        else:
+            params[full_name] = trial.suggest_categorical(full_name, _as_list(value))
+
+    for name, value in _coerce_dict(
+        getattr(search_cfg, "fedavg", None),
+    ).items():
+        full_name = f"fedavg.{name}"
         if _is_range_spec(value):
             params[full_name] = _suggest_from_spec(trial, full_name, value)
         else:

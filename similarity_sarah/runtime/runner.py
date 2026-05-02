@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader
 from similarity_sarah.algorithms.base import BaseAlgorithm
 from similarity_sarah.algorithms.batched_nfg_sarah import BatchedNoFullGradSARAH
 from similarity_sarah.algorithms.distributed_sarah import DistributedSARAH
+from similarity_sarah.algorithms.fedavg import FedAvg
 from similarity_sarah.algorithms.svrs import SVRS
 from similarity_sarah.data.datasets import (
     load_augmented_train,
@@ -259,7 +260,9 @@ class Runner:
         """Build the inexact proximal solver from algorithm configuration."""
         kind = str(OmegaConf.select(algo_cfg, "prox_solver", default="sgd")).lower()
         num_steps = int(algo_cfg.prox_num_steps)
-        lr = float(algo_cfg.prox_lr)
+        lr_raw = OmegaConf.select(algo_cfg, "prox_lr", default=None)
+        # ``prox_lr`` may be ``null`` for AccVRS solvers (auto-derive 1/(2L)).
+        lr = float(lr_raw) if lr_raw is not None else None
         weight_decay = float(
             OmegaConf.select(algo_cfg, "prox_weight_decay", default=0.0),
         )
@@ -274,6 +277,8 @@ class Runner:
         ).lower()
 
         if kind == "sgd":
+            if lr is None:
+                raise ValueError("prox_solver=sgd requires explicit prox_lr.")
             momentum = float(
                 OmegaConf.select(algo_cfg, "prox_momentum", default=0.0),
             )
@@ -287,6 +292,8 @@ class Runner:
                 v_schedule=v_schedule,
             )
         if kind == "adam":
+            if lr is None:
+                raise ValueError("prox_solver=adam requires explicit prox_lr.")
             beta1 = float(OmegaConf.select(algo_cfg, "prox_adam_beta1", default=0.9))
             beta2 = float(OmegaConf.select(algo_cfg, "prox_adam_beta2", default=0.999))
             return InexactProxAdam(
@@ -297,6 +304,68 @@ class Runner:
                 grad_clip=grad_clip,
                 eval_batches=eval_batches,
                 v_schedule=v_schedule,
+            )
+        if kind in ("accvrs_batch_sgd", "accvrs_sgd"):
+            from similarity_sarah.runtime.prox_solver_accvrs import (
+                AccvrsBatchSGDProx,
+            )
+            momentum = float(
+                OmegaConf.select(algo_cfg, "prox_momentum", default=0.0),
+            )
+            return AccvrsBatchSGDProx(
+                num_steps=num_steps,                       # = passes over server_loader
+                lr=lr,                                     # None ⇒ auto = 1/(2L)·lr_factor
+                L1=float(OmegaConf.select(algo_cfg, "prox_L1", default=200.0)),
+                lr_factor=float(
+                    OmegaConf.select(algo_cfg, "prox_lr_factor", default=1.0),
+                ),
+                weight_decay=weight_decay,
+                momentum=momentum,
+                grad_clip=grad_clip,
+                inner_decay_factor=float(
+                    OmegaConf.select(algo_cfg, "prox_inner_decay_factor", default=0.9),
+                ),
+                inner_decay_period=OmegaConf.select(
+                    algo_cfg, "prox_inner_decay_period", default=None,
+                ),
+                early_stop_ratio=float(
+                    OmegaConf.select(algo_cfg, "prox_inner_early_stop_ratio", default=1e-3),
+                ),
+                include_linear_term=bool(
+                    OmegaConf.select(algo_cfg, "prox_include_linear_term", default=False),
+                ),
+                eval_batches=eval_batches,
+            )
+        if kind in ("accvrs_batch_adam", "accvrs_adam"):
+            from similarity_sarah.runtime.prox_solver_accvrs import (
+                AccvrsBatchAdamProx,
+            )
+            beta1 = float(OmegaConf.select(algo_cfg, "prox_adam_beta1", default=0.9))
+            beta2 = float(OmegaConf.select(algo_cfg, "prox_adam_beta2", default=0.999))
+            return AccvrsBatchAdamProx(
+                num_steps=num_steps,
+                lr=lr,
+                L1=float(OmegaConf.select(algo_cfg, "prox_L1", default=200.0)),
+                lr_factor=float(
+                    OmegaConf.select(algo_cfg, "prox_lr_factor", default=1.0),
+                ),
+                weight_decay=weight_decay,
+                momentum=0.0,                              # Adam doesn't use Polyak
+                grad_clip=grad_clip,
+                inner_decay_factor=float(
+                    OmegaConf.select(algo_cfg, "prox_inner_decay_factor", default=0.9),
+                ),
+                inner_decay_period=OmegaConf.select(
+                    algo_cfg, "prox_inner_decay_period", default=None,
+                ),
+                early_stop_ratio=float(
+                    OmegaConf.select(algo_cfg, "prox_inner_early_stop_ratio", default=1e-3),
+                ),
+                include_linear_term=bool(
+                    OmegaConf.select(algo_cfg, "prox_include_linear_term", default=False),
+                ),
+                eval_batches=eval_batches,
+                betas=(beta1, beta2),
             )
         raise ValueError(f"Unknown prox_solver: {kind}")
 
@@ -320,6 +389,14 @@ class Runner:
             algorithm = DistributedSARAH(
                 lr=algo_cfg.lr,
                 batch_size_clients=algo_cfg.batch_size_clients,
+            )
+        elif algo_cfg.name == "fedavg":
+            algorithm = FedAvg(
+                lr=algo_cfg.lr,
+                batch_size_clients=algo_cfg.batch_size_clients,
+                include_server=bool(
+                    OmegaConf.select(algo_cfg, "include_server", default=True),
+                ),
             )
         else:
             raise ValueError(f"Unknown algorithm: {algo_cfg.name}")
