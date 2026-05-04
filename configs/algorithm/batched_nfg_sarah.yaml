@@ -2,7 +2,10 @@ name: batched_nfg_sarah
 
 num_clients: 10
 batch_size_clients: 1
-theta: 0.5
+# Hyper-parameters below are the best Optuna-tuned values for the InexactProxSGD
+# inner-loop solver (see W&B runs in tune-* groups).  Keep them as the
+# default starting point; override on the command line for ablations.
+theta: 0.19007937872949687
 num_epochs: 100
 
 # ── Inexact proximal solver ────────────────────────────────────────────
@@ -11,8 +14,8 @@ num_epochs: 100
 # which dramatically improves the inner-prox convergence on deep nets and
 # is the main reason the model can reach >0.9 accuracy on CIFAR-10.
 prox_solver: sgd
-prox_num_steps: 80
-prox_lr: 0.005
+prox_num_steps: 86
+prox_lr: 0.007299057644263543
 prox_momentum: 0.0
 prox_weight_decay: 0.0
 # Global L2-norm clip on the inner-step direction (∇Φ).  ``0`` disables
@@ -38,6 +41,19 @@ prox_eval_batches: 4
 # stay near 1 (the schedule isn't targeting the canonical optimum) — track
 # ``val/accuracy`` and ``prox_obj_decrease`` instead for that mode.
 prox_v_schedule: constant
+
+# ── End-of-epoch v_tilde refresh (optional) ────────────────────────────
+# Default behaviour (false): v^{(s+1)} = tilde_v_{K+1} from the recursive
+# update during the epoch (literal pseudocode).
+# When true: at the end of the epoch, every client computes
+# ∇f_i(w_final) on ONE fresh minibatch and sends to the server, which
+# also computes ∇f_1(w_final) on a server minibatch.  The carry-over is
+# replaced with
+#     v_epoch_new = (1/n) Σ_i ∇(f_i − f_1)(w_final),
+# i.e. a single-shot stochastic anchor at the end-of-epoch iterate.
+# Cost: 1 + M extra mini-batch forward+backward passes per epoch
+# (cheap; same minibatch primitive as the recursive update).
+update_v_tilde_in_the_end: false
 
 # ── AccVRS-style inexact prox solvers (optional) ──────────────────────
 # Set ``prox_solver`` to ``accvrs_batch_sgd`` or ``accvrs_batch_adam`` to

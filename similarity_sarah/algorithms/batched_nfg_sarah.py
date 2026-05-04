@@ -73,6 +73,20 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         theta: Proximal step size θ.
         batch_size_clients: Number of clients sampled per inner step (B).
         prox_solver: Concrete :class:`ProxSolver` used for prox_{θ f₁}.
+        update_v_tilde_in_the_end: If True, override the recursive
+            tilde_v at end of epoch with a fresh stochastic anchor
+            computed at the final iterate w_final:
+
+                v_epoch_new = (1/n) Σ_i ∇(f_i − f_1)(w_final)
+
+            using ONE minibatch per client (and one minibatch on the
+            server) — i.e. the same ``compute_batch_gradient`` used by
+            the recursive update, just evaluated once at the
+            end-of-epoch point.  Cost: 1 + M extra mini-batch
+            forward+backward passes per epoch.  The recursive
+            ``tilde_v`` is *still* computed during the epoch — only its
+            role as "carry-over to next epoch" is replaced.  When False
+            (default) keeps the literal pseudocode behaviour.
     """
 
     def __init__(
@@ -80,10 +94,12 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         theta: float,
         batch_size_clients: int,
         prox_solver: ProxSolver,
+        update_v_tilde_in_the_end: bool = False,
     ) -> None:
         self.theta = theta
         self.batch_size_clients = batch_size_clients
         self.prox_solver = prox_solver
+        self.update_v_tilde_in_the_end = bool(update_v_tilde_in_the_end)
 
         self.model: nn.Module | None = None
         self.server_grad_loader: DataLoader | None = None
@@ -158,6 +174,43 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             self.loss_fn, self.device,
             xy=xy,
         )
+
+    # ------------------------------------------------------------------
+    # End-of-epoch fresh anchor for v_tilde (optional, see __init__ docstring).
+    # ------------------------------------------------------------------
+    def _compute_end_of_epoch_v_tilde(self) -> ParamList:
+        """Recompute ``v_tilde`` at the end of an epoch using a *single
+        minibatch* per node at the current model state ``w_final``:
+
+            v_tilde_new = (1/n) Σ_{i=2..n} ∇(f_i − f_1)(w_final)
+
+        Each client runs ``compute_batch_gradient`` on one fresh minibatch
+        from its local loader; the server does the same on its grad
+        loader.  This is a *stochastic* one-shot estimate of
+        ``∇f − ∇f_1`` (matches the spirit of the recursive update
+        during the epoch, which also uses one minibatch per client).
+        Cheap (1+M forward+backward passes per epoch) — much lighter
+        than a full-gradient anchor but noisier.
+
+        Server contribution ``∇(f_1 − f_1) = 0`` is implicit, so we sum
+        only over clients with weight ``1/n`` (algebraic identity:
+        ``∇f − ∇f_1 = (1/n) Σ_{i=2..n} (∇f_i − ∇f_1)``).
+        """
+        n = self.total_nodes
+        # ∇f_1(w_final) on one minibatch from the deterministic server loader.
+        grad_f1 = compute_batch_gradient(
+            self.model, self.server_grad_loader,
+            self.loss_fn, self.device,
+        )
+        # (1/n) Σ_{i=2..n} ∇(f_i − f_1)(w_final), one minibatch per client.
+        accum = zeros_like_params(self.model)
+        for client_loader in self.client_loaders:
+            grad_i = compute_batch_gradient(
+                self.model, client_loader, self.loss_fn, self.device,
+            )
+            for a, gi, g1 in zip(accum, grad_i, grad_f1):
+                a.add_(gi - g1, alpha=1.0 / n)
+        return accum
 
     # ------------------------------------------------------------------
     # Main epoch
@@ -269,8 +322,21 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
                 compute_param_norm(v), step_norms[-1],
             )
 
-        # v^{(s+1)} = tilde_v_{K+1}
-        self.v_epoch = tilde_v
+        # v^{(s+1)} carry-over to next epoch.
+        # Default path: v_epoch = tilde_v_{K+1} (literal pseudocode).
+        # Alternative: refresh v_tilde at the very end with exact
+        # full-gradient values at w_final (see _compute_end_of_epoch_v_tilde).
+        if self.update_v_tilde_in_the_end:
+            v_tilde_recursive_norm = compute_param_norm(tilde_v)
+            self.v_epoch = self._compute_end_of_epoch_v_tilde()
+            v_tilde_refreshed_norm = compute_param_norm(self.v_epoch)
+            logger.info(
+                "Epoch %d end-of-epoch v_tilde refresh: "
+                "‖tilde_v_recursive‖=%.4f → ‖v_tilde_refreshed‖=%.4f",
+                epoch, v_tilde_recursive_norm, v_tilde_refreshed_norm,
+            )
+        else:
+            self.v_epoch = tilde_v
 
         def _avg(xs: list[float]) -> float:
             return float(sum(xs) / len(xs)) if xs else 0.0
@@ -280,6 +346,8 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             "inner_steps": float(K),
             "v_norm": compute_param_norm(v),
             "tilde_v_norm": compute_param_norm(tilde_v),
+            "v_epoch_norm": compute_param_norm(self.v_epoch),
+            "v_tilde_refreshed": float(self.update_v_tilde_in_the_end),
             "param_norm": compute_param_norm(get_params(self.model)),
             "step_norm_mean": _avg(step_norms),
             "step_norm_last": float(step_norms[-1]) if step_norms else 0.0,

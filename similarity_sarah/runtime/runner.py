@@ -378,6 +378,11 @@ class Runner:
                 theta=algo_cfg.theta,
                 batch_size_clients=algo_cfg.batch_size_clients,
                 prox_solver=self._build_prox_solver(algo_cfg),
+                update_v_tilde_in_the_end=bool(
+                    OmegaConf.select(
+                        algo_cfg, "update_v_tilde_in_the_end", default=False,
+                    ),
+                ),
             )
         elif algo_cfg.name == "svrs":
             algorithm = SVRS(
