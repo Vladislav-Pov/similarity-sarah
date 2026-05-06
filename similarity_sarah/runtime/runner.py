@@ -383,6 +383,18 @@ class Runner:
                         algo_cfg, "update_v_tilde_in_the_end", default=False,
                     ),
                 ),
+                clip_number_of_clients_with_reshuffle=bool(
+                    OmegaConf.select(
+                        algo_cfg,
+                        "clip_number_of_clients_with_reshuffle",
+                        default=False,
+                    ),
+                ),
+                clip_clients_per_epoch=int(
+                    OmegaConf.select(
+                        algo_cfg, "clip_clients_per_epoch", default=3,
+                    ),
+                ),
             )
         elif algo_cfg.name == "svrs":
             algorithm = SVRS(

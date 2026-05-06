@@ -1,0 +1,34 @@
+# Optuna (TPE, categorical) search for batched_nfg_sarah with the
+# ``clip_number_of_clients_with_reshuffle`` ablation: each epoch traverses
+# only 3 clients (out of 10) along a persistent permutation, and the
+# carry-over v_tilde is rescaled by n/3.  Requires batch_size_clients=1.
+enabled: true
+method: optuna
+max_epochs: 200
+num_trials: 20
+wandb_project: optune-tune
+wandb_group: "bnfg-clip-optuna-${now:%Y%m%d-%H%M%S}"
+
+# Persistent storage for the Optuna study (SQLite).
+storage_dir: optuna_studies
+study_name: null
+
+sampler:
+  kind: tpe
+  seed: 0
+
+pruner:
+  kind: median
+  n_startup_trials: 10
+  n_warmup_epochs: 20
+  interval_epochs: 1
+
+shared:
+  batch_size_clients: [1]
+
+batched_nfg_sarah:
+  clip_number_of_clients_with_reshuffle: [true]
+  clip_clients_per_epoch: [2,3]
+  theta:          [0.1, 0.2, 0.3]
+  prox_lr:        [0.0025, 0.007, 0.014]
+  prox_num_steps: [80]

@@ -55,6 +55,20 @@ prox_v_schedule: constant
 # (cheap; same minibatch primitive as the recursive update).
 update_v_tilde_in_the_end: false
 
+# ── Clip clients per epoch with persistent reshuffle (optional) ───────
+# When ``clip_number_of_clients_with_reshuffle: true``, each epoch
+# traverses only ``clip_clients_per_epoch`` clients (default 3) drawn
+# as a non-overlapping slice of a persistent random permutation of
+# ``[0, num_clients)``.  After the permutation is exhausted, a fresh
+# one is sampled (the leftover ``num_clients % clip_clients_per_epoch``
+# clients in each permutation are skipped — matches the spec
+# "первые 9 клиентов, делим на три группы").  The recursive
+# ``tilde_v_{K+1}`` is multiplied by ``n / clip_clients_per_epoch`` at
+# the end of the epoch so its magnitude matches a full-traversal
+# carry-over.  Requires ``batch_size_clients == 1``.
+clip_number_of_clients_with_reshuffle: false
+clip_clients_per_epoch: 3
+
 # ── AccVRS-style inexact prox solvers (optional) ──────────────────────
 # Set ``prox_solver`` to ``accvrs_batch_sgd`` or ``accvrs_batch_adam`` to
 # use the inner-loop solver ported from AccVRS/resnet_exp/new_alg.argminA

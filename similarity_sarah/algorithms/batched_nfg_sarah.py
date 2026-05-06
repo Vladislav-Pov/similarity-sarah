@@ -87,6 +87,22 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             ``tilde_v`` is *still* computed during the epoch — only its
             role as "carry-over to next epoch" is replaced.  When False
             (default) keeps the literal pseudocode behaviour.
+        clip_number_of_clients_with_reshuffle: If True, an epoch
+            traverses only ``clip_clients_per_epoch`` clients (default
+            3) instead of all of them.  Clients are picked from a
+            *persistent* random permutation of ``[0, num_clients)``: the
+            first ``num_clients // clip_clients_per_epoch`` epochs use
+            consecutive non-overlapping slices of length
+            ``clip_clients_per_epoch`` from that permutation; once the
+            permutation is exhausted, a fresh one is sampled (the
+            leftover ``num_clients % clip_clients_per_epoch`` clients
+            from each permutation are skipped — matches the user spec
+            "первые 9 клиентов, и делим их на три группы").  At the end
+            of every epoch the recursive ``tilde_v`` is multiplied by
+            ``n / clip_clients_per_epoch`` so its magnitude scales as
+            if it had been built from all ``n`` clients.  Requires
+            ``batch_size_clients == 1``.  Default False.
+        clip_clients_per_epoch: Group size for the flag above (default 3).
     """
 
     def __init__(
@@ -95,11 +111,17 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         batch_size_clients: int,
         prox_solver: ProxSolver,
         update_v_tilde_in_the_end: bool = False,
+        clip_number_of_clients_with_reshuffle: bool = False,
+        clip_clients_per_epoch: int = 3,
     ) -> None:
         self.theta = theta
         self.batch_size_clients = batch_size_clients
         self.prox_solver = prox_solver
         self.update_v_tilde_in_the_end = bool(update_v_tilde_in_the_end)
+        self.clip_number_of_clients_with_reshuffle = bool(
+            clip_number_of_clients_with_reshuffle
+        )
+        self.clip_clients_per_epoch = int(clip_clients_per_epoch)
 
         self.model: nn.Module | None = None
         self.server_grad_loader: DataLoader | None = None
@@ -110,6 +132,10 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         self.v_epoch: ParamList = []
         self.num_clients: int = 0
         self.total_nodes: int = 0
+
+        # Persistent permutation state for ``clip_number_of_clients_with_reshuffle``.
+        self._client_permutation: list[int] = []
+        self._client_perm_offset: int = 0
 
     def initialize(
         self,
@@ -213,12 +239,54 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         return accum
 
     # ------------------------------------------------------------------
+    # Persistent-permutation slicing for ``clip_number_of_clients_with_reshuffle``.
+    # ------------------------------------------------------------------
+    def _next_clipped_client_slice(self) -> list[int]:
+        """Return the next ``clip_clients_per_epoch`` client indices.
+
+        Uses ``self._client_permutation`` as a persistent shuffle: each
+        call advances by ``clip_clients_per_epoch`` consecutive indices.
+        When the remaining tail is shorter than the slice size, a fresh
+        permutation is sampled (the tail itself is *skipped* — matches
+        the user's spec "первые 9 клиентов, делим на три группы").
+        """
+        K = self.clip_clients_per_epoch
+        if (
+            not self._client_permutation
+            or self._client_perm_offset + K > len(self._client_permutation)
+        ):
+            self._client_permutation = torch.randperm(self.num_clients).tolist()
+            self._client_perm_offset = 0
+        slice_ = self._client_permutation[
+            self._client_perm_offset : self._client_perm_offset + K
+        ]
+        self._client_perm_offset += K
+        return slice_
+
+    # ------------------------------------------------------------------
     # Main epoch
     # ------------------------------------------------------------------
     def run_epoch(self, epoch: int) -> dict[str, float]:
         assert self.model is not None
 
-        batches = sample_client_batches(self.num_clients, self.batch_size_clients)
+        if self.clip_number_of_clients_with_reshuffle:
+            if self.batch_size_clients != 1:
+                raise ValueError(
+                    "clip_number_of_clients_with_reshuffle requires "
+                    "batch_size_clients == 1, got "
+                    f"{self.batch_size_clients}"
+                )
+            client_slice = self._next_clipped_client_slice()
+            batches = [[cid] for cid in client_slice]
+            logger.info(
+                "Epoch %d clipping clients (%d/%d): perm_offset=%d, slice=%s",
+                epoch, len(client_slice), self.num_clients,
+                self._client_perm_offset - len(client_slice), client_slice,
+            )
+        else:
+            batches = sample_client_batches(
+                self.num_clients, self.batch_size_clients,
+            )
         K = len(batches)
         n = self.total_nodes
         B = self.batch_size_clients  # paper's *fixed* B (used in coefficients)
@@ -335,6 +403,21 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
                 "‖tilde_v_recursive‖=%.4f → ‖v_tilde_refreshed‖=%.4f",
                 epoch, v_tilde_recursive_norm, v_tilde_refreshed_norm,
             )
+        elif self.clip_number_of_clients_with_reshuffle:
+            # tilde_v built from only ``clip_clients_per_epoch`` clients;
+            # rescale by ``n / clip_clients_per_epoch`` so its magnitude
+            # matches a full-traversal carry-over.
+            scale = n / self.clip_clients_per_epoch
+            scaled = clone_params(tilde_v)
+            for t_ in scaled:
+                t_.mul_(scale)
+            logger.info(
+                "Epoch %d clipped v_tilde rescale x%.4f: "
+                "‖tilde_v_recursive‖=%.4f → ‖v_epoch‖=%.4f",
+                epoch, scale,
+                compute_param_norm(tilde_v), compute_param_norm(scaled),
+            )
+            self.v_epoch = scaled
         else:
             self.v_epoch = tilde_v
 
