@@ -395,6 +395,11 @@ class Runner:
                         algo_cfg, "clip_clients_per_epoch", default=3,
                     ),
                 ),
+                log_deviation=bool(
+                    OmegaConf.select(
+                        algo_cfg, "log_deviation", default=False,
+                    ),
+                ),
             )
         elif algo_cfg.name == "svrs":
             algorithm = SVRS(

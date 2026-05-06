@@ -51,6 +51,7 @@ from similarity_sarah.utils import (
     add_params_,
     clone_params,
     compute_batch_gradient,
+    compute_full_gradient,
     compute_param_norm,
     diff_param_norm,
     get_params,
@@ -103,6 +104,18 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             if it had been built from all ``n`` clients.  Requires
             ``batch_size_clients == 1``.  Default False.
         clip_clients_per_epoch: Group size for the flag above (default 3).
+        log_deviation: If True, at the start of every epoch compute the
+            *exact* full-gradient anchor
+            ``g_exact = (1/n) Σ_{i=2..n} (∇f_i − ∇f_1)(w_0^{(s)})``
+            via :func:`compute_full_gradient` on every node, and log the
+            squared deviation of the carry-over estimator
+            ``v_0^{(s)} = self.v_epoch`` from this exact value:
+            ``‖v_0^{(s)} − g_exact‖²``.  Useful as a diagnostic for
+            how close the running-mean estimator stays to the true
+            gradient over training.  Cost: one full pass over the
+            server's grad loader plus one full pass per client per
+            epoch (i.e. an SVRS-style anchor refresh, but only for
+            logging — not used in the update).  Default False.
     """
 
     def __init__(
@@ -113,6 +126,7 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         update_v_tilde_in_the_end: bool = False,
         clip_number_of_clients_with_reshuffle: bool = False,
         clip_clients_per_epoch: int = 3,
+        log_deviation: bool = False,
     ) -> None:
         self.theta = theta
         self.batch_size_clients = batch_size_clients
@@ -122,6 +136,7 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             clip_number_of_clients_with_reshuffle
         )
         self.clip_clients_per_epoch = int(clip_clients_per_epoch)
+        self.log_deviation = bool(log_deviation)
 
         self.model: nn.Module | None = None
         self.server_grad_loader: DataLoader | None = None
@@ -239,6 +254,29 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         return accum
 
     # ------------------------------------------------------------------
+    # Exact full-gradient anchor (diagnostic only — see ``log_deviation``).
+    # ------------------------------------------------------------------
+    def _compute_exact_full_grad_diff(self) -> ParamList:
+        """``g_exact = (1/n) Σ_{i=2..n} (∇f_i − ∇f_1)(w_current)`` exactly.
+
+        One full deterministic pass over the server's grad loader and
+        each client's loader — same construction as SVRS's
+        ``_refresh_anchor``.  Does not modify the model parameters.
+        """
+        n = self.total_nodes
+        grad_f1 = compute_full_gradient(
+            self.model, self.server_grad_loader, self.loss_fn, self.device,
+        )
+        accum = zeros_like_params(self.model)
+        for client_loader in self.client_loaders:
+            grad_i = compute_full_gradient(
+                self.model, client_loader, self.loss_fn, self.device,
+            )
+            for a, gi, g1 in zip(accum, grad_i, grad_f1):
+                a.add_(gi - g1, alpha=1.0 / n)
+        return accum
+
+    # ------------------------------------------------------------------
     # Persistent-permutation slicing for ``clip_number_of_clients_with_reshuffle``.
     # ------------------------------------------------------------------
     def _next_clipped_client_slice(self) -> list[int]:
@@ -294,6 +332,29 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         # tilde_v_1^{(s)} = 0,  v_0^{(s)} = v^{(s)} (carry over)
         v = clone_params(self.v_epoch)
         tilde_v = zeros_like_params(self.model)
+
+        # ── Optional diagnostic: ‖v_0^{(s)} − ∇(f − f_1)(w_0^{(s)})‖² ──
+        # Compares the carry-over estimator to the *exact* full-gradient
+        # anchor at the start-of-epoch iterate.  Model is currently at
+        # w_0^{(s)} so the gradient is taken at the right point.  Skipped
+        # by default — flag is for diagnostic runs only.
+        v0_deviation_sq = 0.0
+        v0_deviation_norm = 0.0
+        exact_grad_diff_norm = 0.0
+        v0_norm_at_start = compute_param_norm(v)
+        if self.log_deviation:
+            exact_grad_diff = self._compute_exact_full_grad_diff()
+            sq = 0.0
+            for vi, ei in zip(v, exact_grad_diff):
+                sq += (vi - ei).square().sum().item()
+            v0_deviation_sq = float(sq)
+            v0_deviation_norm = float(sq ** 0.5)
+            exact_grad_diff_norm = compute_param_norm(exact_grad_diff)
+            logger.info(
+                "Epoch %d log_deviation: ‖v_0‖=%.4e  ‖∇(f-f_1)(w_0)‖=%.4e  "
+                "‖v_0 - ∇(f-f_1)(w_0)‖²=%.4e",
+                epoch, v0_norm_at_start, exact_grad_diff_norm, v0_deviation_sq,
+            )
 
         # w_0 for the first inner step (used as w_{t-1} when t=1).
         w_prev = get_params(self.model)
@@ -439,4 +500,10 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             "prox_grad_norm_ratio_mean": _avg(prox_ratios),
             "prox_obj_decrease_mean": _avg(prox_obj_decreases),
             "prox_clip_frac_mean": _avg(prox_clip_fracs),
+            # Diagnostic: deviation of carry-over v_0 from exact ∇(f-f_1)(w_0).
+            # Zero when ``log_deviation`` is False (cheap default).
+            "v0_deviation_sq": v0_deviation_sq,
+            "v0_deviation_norm": v0_deviation_norm,
+            "v0_norm_at_start": v0_norm_at_start,
+            "exact_grad_diff_norm": exact_grad_diff_norm,
         }

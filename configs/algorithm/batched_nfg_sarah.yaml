@@ -69,6 +69,17 @@ update_v_tilde_in_the_end: false
 clip_number_of_clients_with_reshuffle: false
 clip_clients_per_epoch: 3
 
+# ── Diagnostic: log ‖v_0^{(s)} − ∇(f − f_1)(w_0^{(s)})‖² per epoch ────
+# When true, at the start of every epoch the carry-over estimator
+# v_0^{(s)} is compared against the *exact* full-gradient anchor
+#   g_exact = (1/n) Σ_{i=2..n} (∇f_i − ∇f_1)(w_0^{(s)})
+# computed via a full deterministic pass on the server's grad loader
+# and on each client's loader.  The squared deviation, the norm of v_0,
+# and the norm of g_exact are written to W&B every epoch.  This is
+# expensive — it adds an SVRS-style anchor refresh per epoch — and is
+# meant only for diagnostic / paper-figure runs.  Default false.
+log_deviation: false
+
 # ── AccVRS-style inexact prox solvers (optional) ──────────────────────
 # Set ``prox_solver`` to ``accvrs_batch_sgd`` or ``accvrs_batch_adam`` to
 # use the inner-loop solver ported from AccVRS/resnet_exp/new_alg.argminA
