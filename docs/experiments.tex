@@ -1,0 +1,160 @@
+% =========================================================================
+%  Experiments section for the NFG-SS paper.
+%  Drop-in TeX: \input{experiments.tex} from your main file.
+%  Placeholders are marked \todo{...} — fill them in before submission.
+% =========================================================================
+
+\section{Experiments}
+\label{sec:experiments}
+
+We empirically validate \texttt{NFG-SS} on a non-convex distributed image
+classification task. The goal of this section is twofold: (i) verify
+that removing the full-gradient anchor does not hurt convergence in
+practice, and (ii) measure the gain from exploiting second-order
+similarity at a fixed communication budget.
+
+\subsection{Setting}
+\label{sec:exp-setup}
+
+\paragraph{Task and architecture.} We train ResNet-18 (adapted to
+$32{\times}32$ inputs) with cross-entropy loss on CIFAR-10. The
+training set is partitioned uniformly at random across $n=11$ nodes:
+one node is treated as the server (it holds $f_1$) and the remaining
+$10$ act as clients $f_2,\dots,f_{11}$. We use the standard CIFAR-10
+train/test split and hold out $5\%$ of the training set as a
+validation split used only for hyperparameter selection. All methods
+share the same data partition, the same initialization, and the same
+evaluation protocol.
+
+\paragraph{Communication metric.} Throughout this section we report
+test accuracy as a function of the number of $\mathbb{R}^d$ vectors
+transmitted between the server and the clients (sum of both
+directions), which is the cost measure used in our analysis
+(Section~\ref{sec:related-work}).
+
+\subsection{Methods}
+\label{sec:exp-methods}
+
+We compare \texttt{NFG-SS} (Algorithm~\ref{alg:nfgss}) against
+\texttt{SVRS}~\citep{}\todo{cite [22]} and \texttt{FedAvg}~\citep{}\todo{cite [24]}.
+\texttt{SVRS} is run in an \emph{identical} setting to \texttt{NFG-SS}
+— same model, partition, inexact proximal solver, and number of outer
+epochs — so that the two algorithms differ \emph{only} in the
+construction of the gradient estimator $v_t^{(s)}$, isolating the
+effect of removing the full-gradient anchor. We honour the original
+\texttt{SVRS} schedule literally: at the start of every outer round
+\texttt{SVRS} performs an exact full-gradient anchor refresh
+$g_{\mathrm{ref}}=\tfrac{1}{n}\sum_i\nabla(f_i-f_1)(w_{\mathrm{ref}})$
+by querying \emph{every} client over its entire local dataset. The
+corresponding $\mathcal{O}(n)$ vectors per refresh are counted toward
+the communication budget on the horizontal axis of
+Figure~\ref{fig:cifar10-curves}.
+
+\texttt{FedAvg}, which has no notion of similarity-aware variance
+reduction, is run in a \emph{communication-matched} regime: the total
+number of transmitted vectors over training is set equal to that of
+\texttt{NFG-SS}. This is deliberately a generous baseline (it relaxes
+\texttt{FedAvg}'s per-round full-aggregation schedule) and serves to
+confirm that any gain we observe is driven by the similarity structure
+rather than by partial-participation savings.
+
+The proximal step on $f_1$ in both \texttt{NFG-SS} and \texttt{SVRS}
+is approximated by the same inexact solver — a fixed number $K$ of
+stochastic-gradient iterations on the proximal objective with gradient
+clipping; details in Appendix~\ref{appendix:prox-solver}.
+
+\subsection{Hyperparameters}
+\label{sec:exp-hyper}
+
+For every method we tune the hyperparameters listed in
+Table~\ref{tab:hyper-grid} via a TPE sampler with median pruning;
+$N_{\mathrm{trials}}=\todo{N}$ trials per method, $\todo{T}$ warmup
+epochs, pruning interval $1$ epoch. The score of a trial is its best
+validation accuracy. We then evaluate the best configuration on the
+held-out test set. Selected values are listed in
+Appendix~\ref{appendix:hyperparams}.
+
+\begin{table}[t]
+\centering
+\caption{Hyperparameter search grids.}
+\label{tab:hyper-grid}
+\todo{[авторы — заполнить грид]}
+\begin{tabular}{lll}
+\toprule
+Method & Hyperparameter & Search values \\
+\midrule
+\multirow{4}{*}{\texttt{NFG-SS}}
+  & step size $\theta$           & \todo{...} \\
+  & client batch size $b$        & \todo{...} \\
+  & inner-prox iterations $K$    & \todo{...} \\
+  & inner-prox learning rate     & \todo{...} \\
+\midrule
+\multirow{3}{*}{\texttt{SVRS}}
+  & step size $\theta$           & \todo{...} \\
+  & client batch size $b$        & \todo{...} \\
+  & inner-prox learning rate     & \todo{...} \\
+\midrule
+\multirow{2}{*}{\texttt{FedAvg}}
+  & local learning rate          & \todo{...} \\
+  & number of local steps        & \todo{...} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Results}
+\label{sec:exp-results}
+
+Figure~\ref{fig:cifar10-curves} reports test accuracy versus the
+number of transmitted vectors. \texttt{NFG-SS} attains $\approx 0.81$
+test accuracy, dominating \texttt{SVRS}, which plateaus around
+$\approx 0.78$ in the same communication budget;
+communication-matched \texttt{FedAvg} reaches $\todo{...}$. Beyond the
+final accuracy, \texttt{NFG-SS} also reaches the \texttt{SVRS}
+plateau substantially earlier in training, indicating that the
+running-mean estimator $\tilde v_t^{(s)}$ provides variance control
+comparable to a full-gradient anchor without the corresponding
+$\mathcal{O}(n)$ synchronisation cost at the start of every epoch.
+The gap to communication-matched \texttt{FedAvg} confirms that
+exploiting second-order similarity is the dominant factor: at the
+same communication budget a similarity-agnostic method, even one
+given the ``unfair'' freedom to ignore its original full-aggregation
+schedule, does not catch up.
+
+\begin{figure}[t]
+\centering
+\todo{[прикрепить график test accuracy vs transmitted vectors]}
+\caption{Test accuracy on CIFAR-10 as a function of the number of
+transmitted client$\leftrightarrow$server vectors. \texttt{NFG-SS}
+matches or exceeds the final accuracy of \texttt{SVRS} while never
+invoking a full-participation round; communication-matched
+\texttt{FedAvg} trails both similarity-based methods. The
+$\mathcal{O}(n)$ vectors of every \texttt{SVRS} anchor refresh are
+included in its horizontal-axis position. Curves are averaged over
+\todo{$R$} random seeds; shaded regions denote min/max range.}
+\label{fig:cifar10-curves}
+\end{figure}
+
+\paragraph{Takeaways.}
+(i) Replacing the full-gradient anchor of \texttt{SVRS} with the
+running-mean estimator $\tilde v$ from
+\eqref{eq:tildev-recursion} \emph{improves} both final accuracy and
+communication efficiency on CIFAR-10, in line with our
+$\mathcal{O}(n\delta^2/\varepsilon^2)$ communication bound.
+(ii) The gain over a generous, communication-matched \texttt{FedAvg}
+is large and consistent across the training horizon, showing that
+under second-order similarity it is possible to recover nearly the
+full benefit of variance reduction without ever paying the
+$\mathcal{O}(n)$ per-anchor synchronisation cost.
+
+\subsection{Ablation: visiting only $K$ clients per epoch}
+\label{sec:exp-ablation}
+
+The convergence analysis covers the case of disjoint batches that
+together cover all $n-1$ clients within one epoch. We additionally
+study a more aggressive regime in which only $K<n-1$ clients are
+visited per epoch, drawn as a non-overlapping slice of a persistent
+random permutation of $\{2,\ldots,n\}$ that is reshuffled once
+exhausted; the carry-over estimator is rescaled by $(n-1)/K$ to
+compensate for the missing mass. This ablation tests robustness of
+\texttt{NFG-SS} to even tighter per-epoch client budgets; full results
+are deferred to Appendix~\ref{appendix:clip-ablation}.

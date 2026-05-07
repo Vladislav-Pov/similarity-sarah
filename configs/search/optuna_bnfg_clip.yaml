@@ -6,7 +6,7 @@ enabled: true
 method: optuna
 max_epochs: 200
 num_trials: 20
-wandb_project: optune-tune
+wandb_project: nfg_clip
 wandb_group: "bnfg-clip-optuna-${now:%Y%m%d-%H%M%S}"
 
 # Persistent storage for the Optuna study (SQLite).
