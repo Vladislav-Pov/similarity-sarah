@@ -1,0 +1,31 @@
+# Tooling configuration only (lint / type-check / test).
+# Intentionally NO [project] or [build-system] table: the repo is run from a
+# checkout (``python main.py ...``) and installs deps via ``requirements.txt``;
+# packaging is out of scope for the rewrite.
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+# Conservative, high-signal rule set. Widened as the rewrite lands more modules.
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+  "E501",  # line length handled by the formatter, not enforced hard
+]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true       # torch/torchvision ship partial stubs
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+# Scope grows per milestone; M1 type-checks only the new ``core`` package.
+files = ["similarity_sarah/core"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]

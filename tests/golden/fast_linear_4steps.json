@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "config": "synthetic / SimpleCNN / CPU / 1 epoch / seed 42",
+    "note": "prox_v_schedule is a no-op on the AccVRS path",
+    "prox_num_steps": 4,
+    "prox_v_schedule": "linear",
+    "source": "pre-rewrite code @ baseline 4ca4873",
+    "variant": "fast_linear_4steps"
+  },
+  "metrics": {
+    "epoch": 0.0,
+    "exact_grad_diff_norm": 0.0,
+    "inner_steps": 10.0,
+    "param_norm": 10.794947465604345,
+    "prox_clip_frac_mean": 0.0,
+    "prox_grad_norm_first_mean": 0.7912351954655382,
+    "prox_grad_norm_last_mean": 0.7758265877936471,
+    "prox_grad_norm_ratio_mean": 0.9811185585074621,
+    "prox_obj_decrease_mean": -6.148679746380155e-05,
+    "step_norm_last": 0.038372132084582046,
+    "step_norm_mean": 0.029658674979261702,
+    "tilde_v_norm": 0.9583425344491333,
+    "v0_deviation_norm": 0.0,
+    "v0_deviation_sq": 0.0,
+    "v0_norm_at_start": 0.0,
+    "v_epoch_norm": 0.9583425344491333,
+    "v_norm": 0.16572050789498485,
+    "v_tilde_refreshed": 0.0
+  },
+  "weight_sha256": "059cc8bc58dc16cb028dc4fbefd86c1ec2ec41d99adf4758f148c2294b8cbb54"
+}

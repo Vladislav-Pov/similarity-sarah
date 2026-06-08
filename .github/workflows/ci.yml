@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies (CPU-only torch)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install hydra-core omegaconf numpy ruff mypy pytest
+
+      # Lint scope widens as the rewrite lands more modules (M1: new files only).
+      - name: Lint (ruff)
+        run: |
+          ruff check \
+            similarity_sarah/core \
+            similarity_sarah/experimental \
+            tests/conftest.py tests/test_repro.py tests/test_golden.py tests/golden_oracle.py \
+            scripts/capture_golden.py
+
+      # Type-check scope is configured in pyproject ([tool.mypy] files).
+      - name: Type-check (mypy)
+        run: mypy
+
+      - name: Tests
+        run: pytest
