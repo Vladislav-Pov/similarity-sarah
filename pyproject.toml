@@ -11,7 +11,8 @@ line-length = 100
 # Conservative, high-signal rule set. Widened as the rewrite lands more modules.
 select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = [
-  "E501",  # line length handled by the formatter, not enforced hard
+  "E501",   # line length handled by the formatter, not enforced hard
+  "B905",   # zip() strict=: loops here are over known-equal-length param lists
 ]
 
 [tool.mypy]
@@ -20,8 +21,12 @@ ignore_missing_imports = true       # torch/torchvision ship partial stubs
 warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_optional = true
-# Scope grows per milestone; M1 type-checks only the new ``core`` package.
-files = ["similarity_sarah/core"]
+# Scope grows per milestone as modules are rewritten.
+files = [
+  "similarity_sarah/core",
+  "similarity_sarah/registry.py",
+  "similarity_sarah/spec.py",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

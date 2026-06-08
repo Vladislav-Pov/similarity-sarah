@@ -20,13 +20,15 @@ jobs:
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install hydra-core omegaconf numpy ruff mypy pytest
 
-      # Lint scope widens as the rewrite lands more modules (M1: new files only).
+      # Lint scope widens as the rewrite lands more modules.
       - name: Lint (ruff)
         run: |
           ruff check \
             similarity_sarah/core \
+            similarity_sarah/registry.py \
+            similarity_sarah/spec.py \
             similarity_sarah/experimental \
-            tests/conftest.py tests/test_repro.py tests/test_golden.py tests/golden_oracle.py \
+            tests \
             scripts/capture_golden.py
 
       # Type-check scope is configured in pyproject ([tool.mypy] files).
