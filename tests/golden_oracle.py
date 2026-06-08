@@ -109,20 +109,21 @@ def _weight_sha256(model: nn.Module) -> str:
     return digest.hexdigest()
 
 
-def build_and_run(variant: FastVariant) -> dict[str, object]:
-    """Run one NFG-SS epoch on the fast config and return its signature.
+def build_fast_setup():
+    """Deterministic synthetic / SimpleCNN / CPU setup shared by old and new code.
+
+    Seeds, then builds in ``Runner`` order (data -> model) so the RNG draw
+    sequence is faithful to the real pipeline.
 
     Returns
     -------
-    dict
-        ``{"weight_sha256": str, "metrics": dict[str, float]}``.
+    tuple
+        ``(model, server_grad, server_prox, clients, loss_fn, device)``.
     """
     logging.getLogger("similarity_sarah").setLevel(logging.WARNING)
     set_seed(SEED, deterministic=True)
     device = torch.device(DEVICE)
 
-    # Build in the same order as ``Runner`` (data -> model -> run) so the RNG
-    # draw sequence is faithful to the real pipeline.
     train = _synthetic_train()
     n_val = int(len(train) * VAL_FRACTION)  # type: ignore[arg-type]
     train, _val = random_split(train, [len(train) - n_val, n_val])  # type: ignore[arg-type]
@@ -134,8 +135,18 @@ def build_and_run(variant: FastVariant) -> dict[str, object]:
         DataLoader(p, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
         for p in partitions[1:]
     ]
-
     model = SimpleCNN(num_classes=10).to(device)
+    return model, server_grad, server_prox, clients, nn.CrossEntropyLoss(), device
+
+
+def build_and_run(variant: FastVariant) -> dict[str, object]:
+    """Run one NFG-SS epoch via the *pre-rewrite* code; return its signature.
+
+    Returns ``{"weight_sha256": str, "metrics": dict[str, float]}``. This is
+    the captured-golden producer; the rewritten code is checked against the
+    committed goldens in ``tests/test_nfg_ss.py``.
+    """
+    model, server_grad, server_prox, clients, loss_fn, device = build_fast_setup()
 
     solver = AccvrsBatchSGDProx(
         num_steps=variant.prox_num_steps,
@@ -157,7 +168,7 @@ def build_and_run(variant: FastVariant) -> dict[str, object]:
         server_grad_loader=server_grad,
         server_prox_loader=server_prox,
         client_loaders=clients,
-        loss_fn=nn.CrossEntropyLoss(),
+        loss_fn=loss_fn,
         device=device,
     )
     metrics = {k: float(v) for k, v in algo.run_epoch(0).items()}

@@ -17,10 +17,13 @@ Adding a new algorithm only requires:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+
+from similarity_sarah.registry import Registry
 
 
 class BaseAlgorithm(ABC):
@@ -53,3 +56,49 @@ class BaseAlgorithm(ABC):
         raise NotImplementedError(
             f"{type(self).__name__} does not implement run_step",
         )
+
+
+@dataclass
+class AlgorithmCtx:
+    """The model, data, loss, and device an algorithm runs against.
+
+    ``server_grad_loader`` is the deterministic loader for the SARAH gradients
+    (no augmentation); ``server_prox_loader`` feeds the inexact prox solver
+    (may be augmented).
+    """
+
+    model: nn.Module
+    server_grad_loader: DataLoader
+    server_prox_loader: DataLoader
+    client_loaders: list[DataLoader]
+    loss_fn: nn.Module
+    device: torch.device
+
+    @property
+    def num_clients(self) -> int:
+        return len(self.client_loaders)
+
+    @property
+    def total_nodes(self) -> int:
+        """The paper's ``n``: server ``f1`` plus one objective per client."""
+        return self.num_clients + 1
+
+
+class Algorithm(ABC):
+    """Registry-driven base for the rewritten distributed algorithms.
+
+    A new baseline is two files — ``algorithms/<name>.py`` (a subclass that
+    self-registers with :data:`ALGORITHMS` and implements ``from_spec``) and
+    ``configs/algorithm/<name>.yaml`` — with no edits to the runner.
+    """
+
+    @abstractmethod
+    def bind(self, ctx: AlgorithmCtx) -> None:
+        """Bind the algorithm to a run context (model, loaders, loss, device)."""
+
+    @abstractmethod
+    def run_epoch(self, epoch: int) -> dict[str, float]:
+        """Execute one outer epoch and return a metrics dict."""
+
+
+ALGORITHMS: Registry[Algorithm] = Registry("algorithm")

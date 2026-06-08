@@ -21,10 +21,13 @@ ignore_missing_imports = true       # torch/torchvision ship partial stubs
 warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_optional = true
-# Scope grows per milestone as modules are rewritten.
+# Only the rewritten modules are checked; legacy imports are followed silently.
+follow_imports = "silent"
 files = [
   "similarity_sarah/core",
   "similarity_sarah/prox",
+  "similarity_sarah/algorithms/base.py",
+  "similarity_sarah/algorithms/nfg_ss.py",
   "similarity_sarah/registry.py",
   "similarity_sarah/spec.py",
 ]
