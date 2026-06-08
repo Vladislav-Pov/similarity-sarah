@@ -25,6 +25,7 @@ jobs:
         run: |
           ruff check \
             similarity_sarah/core \
+            similarity_sarah/prox \
             similarity_sarah/registry.py \
             similarity_sarah/spec.py \
             similarity_sarah/experimental \

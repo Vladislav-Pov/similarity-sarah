@@ -24,6 +24,7 @@ no_implicit_optional = true
 # Scope grows per milestone as modules are rewritten.
 files = [
   "similarity_sarah/core",
+  "similarity_sarah/prox",
   "similarity_sarah/registry.py",
   "similarity_sarah/spec.py",
 ]
