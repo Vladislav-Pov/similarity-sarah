@@ -1,174 +1,249 @@
-# Similarity-SARAH: Distributed Optimization Simulation
+# similarity-sarah — NFG-SS distributed optimization
 
-A research codebase for simulating server–client distributed optimisation
-algorithms under Hessian-similarity assumptions.  All clients are
-simulated in a single process (no real networking / DDP).
+Research codebase for **NFG-SS** (*NoFullGrad SARAH Similarity*): distributed,
+non-convex optimization under second-order similarity that **never computes a
+full gradient**. All clients are simulated in one process (no real networking);
+"communication" is a function call. See `docs/paper.pdf` for the algorithm and
+theory.
+
+This README is the entry point — read it top to bottom and you can run
+everything.
 
 ---
 
-## Repository structure
-
-```
-similarity-sarah/
-├── configs/                         # Hydra YAML configs
-│   ├── config.yaml                  #   top-level defaults
-│   ├── algorithm/                   #   algorithm hyper-parameters
-│   │   ├── batched_nfg_sarah.yaml
-│   │   ├── distributed_sarah.yaml
-│   │   └── svrs.yaml
-│   ├── data/
-│   │   ├── cifar10.yaml
-│   │   └── synthetic.yaml
-│   ├── model/
-│   │   ├── simple_cnn.yaml
-│   │   └── resnet18_32x32.yaml
-│   ├── partition/
-│   │   └── uniform.yaml
-│   ├── runtime/
-│   │   └── default.yaml
-│   ├── search/
-│   │   ├── none.yaml
-│   │   ├── grid.yaml
-│   │   └── optuna.yaml
-│   └── experiment/                  #   pre-built experiment presets
-│       ├── debug.yaml
-│       └── debug_distributed_sarah.yaml
-├── similarity_sarah/                # Python package
-│   ├── algorithms/                  #   optimisation algorithms
-│   │   ├── base.py                  #     BaseAlgorithm ABC
-│   │   ├── batched_nfg_sarah.py     #     main algorithm
-│   │   ├── distributed_sarah.py     #     baseline (full grad at epoch start)
-│   │   └── svrs.py                  #     baseline scaffold (Khaled & Jin 2023)
-│   ├── data/                        #   dataset loading & partitioning
-│   ├── models/                      #   neural-network models (BN-free ResNet)
-│   ├── runtime/                     #   runner, scheduler, prox solver, search
-│   ├── tasks/                       #   loss / metrics definitions
-│   └── utils.py                     #   parameter & gradient helpers
-├── tests/                           # pytest tests
-├── main.py                          # Hydra entry point
-├── requirements.txt
-└── README.md
-```
-
-## Quick start
+## 1. Install
 
 ```bash
+# 1) PyTorch (pick the build for your CUDA — see https://pytorch.org)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+# 2) The rest of the runtime deps
 pip install -r requirements.txt
 
-# Smoke tests
-pytest tests/ -v
-
-# 2-epoch debug run on CPU
-python main.py +experiment=debug
-
-# Distributed SARAH baseline (debug)
-python main.py +experiment=debug_distributed_sarah
+# 3) (optional) dev tools — lint / type-check / test
+pip install -r requirements-dev.txt
 ```
 
-## Running a full CIFAR-10 experiment
+> `requirements.txt` does **not** pin a CUDA build of torch (PyPI can't serve
+> `+cuNN` wheels); install torch first from the PyTorch index, then the rest.
+
+A quick check that everything imports and the algorithm is bit-correct:
 
 ```bash
-# Batched No Full Grad SARAH (default config)
-python main.py algorithm.num_epochs=100
-
-# Override individual hyper-parameters on the command line
-python main.py algorithm=batched_nfg_sarah \
-    algorithm.num_clients=20 \
-    algorithm.batch_size_clients=4 \
-    algorithm.theta=0.05
-
-# Distributed SARAH baseline
-python main.py algorithm=distributed_sarah algorithm.lr=0.005
-
-# SVRS baseline scaffold
-python main.py algorithm=svrs algorithm.theta=0.05
+python -m pytest          # 52 tests, ~1 min on CPU; no GPU/CIFAR needed
 ```
 
-Hydra writes logs and outputs to `outputs/<date>/<time>/`.
+---
 
-## Algorithms
+## 2. Quick start
 
-| Key in config         | Class                       | Description                                                                                                  |
-|-----------------------|-----------------------------|--------------------------------------------------------------------------------------------------------------|
-| `batched_nfg_sarah`   | `BatchedNoFullGradSARAH`    | Main algorithm — no full-gradient computation, recursive SARAH estimators, proximal server updates.          |
-| `distributed_sarah`   | `DistributedSARAH`          | Baseline — full gradient at epoch start, standard SARAH correction, plain gradient step.                     |
-| `svrs`                | `SVRS`                      | Baseline scaffold for SVRS (similarity-based variance reduction, Khaled & Jin 2023, arXiv:2304.07504).       |
-
-Adding a new algorithm:
-
-1. Create `similarity_sarah/algorithms/my_algo.py` subclassing `BaseAlgorithm`.
-2. Implement `initialize(...)` and `run_epoch(...)` (optionally `run_step`).
-3. Add `configs/algorithm/my_algo.yaml`.
-4. Register the algorithm in `Runner._setup_algorithm`.
-
-## Hyper-parameter search
+**Fast smoke run** (synthetic data, CPU, no download, ~5 s) — proves the whole
+stack works end to end:
 
 ```bash
-# Grid search
-python main.py search=grid runtime.wandb.enabled=true
-
-# Optuna search over continuous ranges + median pruning
-python main.py search=optuna runtime.wandb.enabled=true
+python main.py algorithm=best data=synthetic model=simple_cnn \
+  algorithm.num_epochs=1 algorithm.num_clients=4 \
+  runtime.device=cpu runtime.num_workers=0 runtime.wandb.enabled=false
 ```
 
-`configs/search/optuna.yaml` describes the search space using small
-range specs:
+**Main NFG-SS run** (CIFAR-10 / ResNet-18 / 11 nodes — the paper setup):
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python main.py algorithm=best seed=0
+```
+
+`runtime.device` defaults to `auto` (CUDA if visible, else CPU), so on a GPU
+server you only set `CUDA_VISIBLE_DEVICES`. The default config logs to W&B —
+either `wandb login` first, or append `runtime.wandb.enabled=false`.
+
+Hydra writes logs/outputs to `outputs/<date>/<time>/`.
+
+---
+
+## 3. The 30-second mental model
+
+```
+main.py (Hydra)
+  └─ parse_run_spec(cfg)            configs/*.yaml  ->  frozen RunSpec  (spec.py)
+       ├─ search enabled?  ── yes ─> run_search        (runtime/search_runner.py)
+       └─ no ─> run_experiment(spec)                   (runtime/loop.py)
+                  ├─ build_federated_data(spec)        (data/loaders.py)
+                  ├─ build_model(...)                  (models/__init__.py)
+                  ├─ ALGORITHMS.get(name).from_spec()  (registry -> algorithms/)
+                  └─ TrainLoop(...).run()              epoch loop + eval + log
+```
+
+Every hyperparameter is a Hydra override on the command line:
+`algorithm.theta=0.3`, `algorithm.prox_num_steps=5`, `runtime.batch_size=256`,
+`seed=1`, …
+
+---
+
+## 4. Running experiments
+
+```bash
+# NFG-SS, best-known config, three seeds
+CUDA_VISIBLE_DEVICES=0 python main.py algorithm=best seed=0
+CUDA_VISIBLE_DEVICES=0 python main.py algorithm=best seed=1
+CUDA_VISIBLE_DEVICES=0 python main.py algorithm=best seed=2
+
+# Baselines (same data/partition)
+CUDA_VISIBLE_DEVICES=0 python main.py algorithm=svrs   seed=0
+CUDA_VISIBLE_DEVICES=0 python main.py algorithm=fedavg seed=0
+
+# Override any hyperparameter
+python main.py algorithm=best algorithm.theta=0.3 algorithm.prox_num_steps=5
+
+# Turn W&B off / point it elsewhere
+python main.py algorithm=best runtime.wandb.enabled=false
+python main.py algorithm=best runtime.wandb.project=my-proj runtime.wandb.entity=me
+```
+
+---
+
+## 5. Configuration (Hydra)
+
+Configs live in `configs/`, composed by group. The top-level defaults are in
+`configs/config.yaml`; override a whole group with `group=name` or a single key
+with `group.key=value`.
+
+| Group | Pick with | Options |
+|-------|-----------|---------|
+| `algorithm` | `algorithm=best` | `best` (winning NFG-SS), `batched_nfg_sarah`, `svrs`, `fedavg` |
+| `data` | `data=cifar10` | `cifar10`, `synthetic` |
+| `model` | `model=resnet18_32x32` | `resnet18_32x32`, `simple_cnn` |
+| `partition` | `partition=uniform` | `uniform` (`server_fraction` knob) |
+| `runtime` | `runtime=default` | batch sizes, device, workers, W&B, prox-lr schedule |
+| `search` | `search=optuna_bnfg` | `none`, `grid*`, `optuna*` |
+
+`algorithm=best` is the recommended NFG-SS config. `algorithm=batched_nfg_sarah`
+is an alias that resolves to the same algorithm class (`NFGSS`).
+
+---
+
+## 6. Reproducing the reference runs
+
+`docs/reference_runs/*.json` are the best-known config snapshots (A100,
+CIFAR-10 / ResNet-18 / 11 nodes). `configs/algorithm/best.yaml` encodes the
+winning formula. The three snapshots differ **only** in `prox_num_steps`
+(`prox_v_schedule` is a no-op on the AccVRS path — see §8), so the distinct
+behaviours are `num_steps ∈ {4, 5}`:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 SEEDS="0 1 2" ./scripts/reproduce_reference.sh
+```
+
+To check **bit-reproducibility** against the pre-rewrite code, run the same
+config on baseline commit `4ca4873` and on the current branch and compare the
+final metrics/weights. The local CI gate already proves bit-identity on a fast
+synthetic config (`tests/test_golden.py`, `tests/test_nfg_ss.py`).
+
+---
+
+## 7. Hyperparameter search (Optuna / grid)
+
+```bash
+python main.py search=optuna_bnfg   runtime.wandb.enabled=true   # NFG-SS, TPE + pruning
+python main.py search=optuna_svrs   runtime.wandb.enabled=true
+python main.py search=grid_bnfg     runtime.wandb.enabled=true
+```
+
+Search spaces are small range specs in `configs/search/*.yaml`:
 
 ```yaml
 batched_nfg_sarah:
-  theta:        {type: float, low: 1e-3, high: 1e-1, log: true}
-  prox_lr:      {type: float, low: 1e-3, high: 2e-1, log: true}
-  prox_num_steps: {type: int, low: 20, high: 200, log: true}
+  theta:          {type: float, low: 1e-3, high: 1e-1, log: true}
+  prox_num_steps: {type: int,   low: 4,    high: 6}
 ```
 
-Trials report intermediate validation accuracy after every `eval_every`
-epoch, so under-performing configurations are pruned early
-(`MedianPruner`/`HyperbandPruner`).
+Trials report validation accuracy every `eval_every` epochs, so weak configs
+are pruned early (`MedianPruner`/`HyperbandPruner`).
 
-## Proximal solver
+---
 
-The proximal step `prox_{θ f₁}(z)` is approximated by `InexactProxSGD`
-or `InexactProxAdam` (a few SGD/Adam steps on the proximal objective).
-Both solvers accept a momentum / weight-decay parameter and return a
-small dictionary of diagnostics (gradient norm at the first / last
-inner step, mean prox-loss, etc.) that the runner forwards to W&B.
+## 8. Algorithms & solvers
 
-To plug in a custom solver:
+| `algorithm.name` | Class | Notes |
+|------------------|-------|-------|
+| `nfg_ss` (`batched_nfg_sarah`) | `NFGSS` | the method — no full gradient, SARAH telescope, prox on `f1` |
+| `svrs` | `SVRS` | baseline; full-gradient anchor each epoch (Lin et al. 2023) |
+| `fedavg` | `FedAvg` | communication-matched baseline (McMahan et al. 2017) |
 
-1. Subclass `ProxSolver` in `similarity_sarah/runtime/prox_solver.py`.
-2. Select it from a config:
-   `algorithm.prox_solver: my_solver` in
-   `configs/algorithm/my_algo.yaml`, then route through
-   `Runner._build_prox_solver`.
+**Inexact prox solvers** (`algorithm.prox_solver`): `accvrs_batch_sgd` (best,
+the default in `best.yaml`), `sgd`, `adam`.
 
-## Logging
+- **`accvrs_batch_sgd`** auto-derives the inner LR: with `prox_lr: null`,
+  `gamma0 = (1/(2L))·prox_lr_factor`, `L = 1 + theta·prox_L1`. `prox_num_steps`
+  counts **full passes over the server loader**, not iterations.
+- **`prox_v_schedule` (`constant`/`linear`) is a no-op on the AccVRS path** —
+  `v` enters only via the warm-start `z = w − theta·v`. It *does* take effect
+  for the `sgd`/`adam` solvers.
 
-Per-epoch, the runner forwards to W&B:
+### Add a new baseline = two files
 
-* `train/v_norm`, `train/tilde_v_norm` — SARAH estimator norms.
-* `train/param_norm`, `train/step_norm_mean`, `train/step_norm_last`.
-* `train/prox_grad_norm_first_mean`, `train/prox_grad_norm_last_mean`,
-  `train/prox_grad_norm_reduction`, `train/prox_loss_mean` —
-  diagnostics of the inner prox subproblem.
-* `train/prox_lr`, `train/epoch_time_s`.
-* `val/loss`, `val/accuracy`, `test/loss`, `test/accuracy`.
+1. `similarity_sarah/algorithms/<name>.py` — subclass `Algorithm`, decorate with
+   `@ALGORITHMS.register("<name>")`, implement `bind`, `run_epoch`, `from_spec`.
+2. `configs/algorithm/<name>.yaml` — its hyperparameters.
 
-## Design notes
+Then add one import line to `similarity_sarah/algorithms/__init__.py` so it
+self-registers. No edits to the runner/loop/loaders.
 
-* **No real distribution** — all clients run in one process; "communication"
-  is a function call.
-* **GroupNorm in ResNet** — BatchNorm in train mode breaks `∇f_i(w)`
-  determinism (running statistics depend on the batch).  GroupNorm has
-  no running buffers and gives sample-wise gradients.
-* **Server-side augmentation** — `data.augment_server: true` enables
-  RandomCrop+HorizontalFlip *only* inside the server's prox loader.
-  Client gradients stay deterministic.
-* **Prox LR schedule** — `runtime.prox_lr_schedule.kind: cosine`
-  (or `step`) lets the inner-prox step-size decay across outer epochs.
+---
 
-## Common command lines
+## 9. Implementation invariants (must-know)
+
+These are load-bearing — `tests/` guards each:
+
+- **SARAH increment uses `1/(n·B)`** (`algorithms/nfg_ss.py`, `coeff_v`). This
+  deliberately diverges from the paper's Algorithm 1 line 9 (`1/b`) so the
+  published reference runs reproduce exactly. **Do not change it.**
+- **Same minibatch at `w_t` and `w_{t-1}`** within an inner step — otherwise the
+  SARAH telescope degenerates into noisy SGD (`docs/instructions.md` §11).
+- **`server_grad_loader` is deterministic** (no augmentation); server-side
+  augmentation is out of scope for the submission.
+- **ResNet is BatchNorm-free** (GroupNorm) so `∇f_i(w)` is a deterministic
+  function of `w`.
+- **Bit-reproducibility**: a fixed `seed` ⇒ a fixed result; set
+  `runtime.deterministic=true` to also pin PyTorch deterministic kernels and
+  seed the data loaders.
+
+---
+
+## 10. Project layout
+
+```
+similarity_sarah/
+├── spec.py             configs -> frozen RunSpec dataclasses
+├── registry.py         name -> class registry (the extensibility seam)
+├── core/               repro (seeding), params, grads, foreach (fused math)
+├── algorithms/         base (Algorithm/AlgorithmCtx/ALGORITHMS), nfg_ss, svrs, fedavg
+├── prox/               base (+ build_prox_solver), inexact (sgd/adam), accvrs, _diag
+├── data/               datasets, partition, loaders (build_federated_data)
+├── models/             resnet18_32x32 (GroupNorm), simple_cnn, build_model
+├── runtime/            loop (TrainLoop, run_experiment), metrics, scheduler,
+│                       search + search_runner
+├── tasks/              classification (loss + eval)
+└── experimental/       OUT OF SCOPE (ablations, AccVRS-Adam) — see its README
+configs/   Hydra groups        main.py   entry point        tests/   pytest suite
+docs/      paper, instructions, reference_runs/   scripts/  run.sh, tune.sh, reproduce_reference.sh
+```
+
+---
+
+## 11. Tests & dev
 
 ```bash
-python main.py runtime.wandb.enabled=true                 # default run
-python main.py search=optuna runtime.wandb.enabled=true   # Optuna sweep
+python -m pytest                                   # 52 tests (bit-repro, invariants, pipeline)
+python -m ruff check similarity_sarah main.py tests
+python -m mypy                                     # type-checks the rewritten modules
 ```
+
+CI (`.github/workflows/ci.yml`) runs all three on CPU, no training.
+
+---
+
+## 12. Logging
+
+When W&B is enabled, per epoch the loop logs under `<algo>/{train,val,test}/<metric>`:
+`v_norm`, `tilde_v_norm`, `param_norm`, `step_norm_mean`, the `prox_grad_norm_*`
+diagnostics, `epoch_time_s`, and `val/test` `loss`/`accuracy`.
