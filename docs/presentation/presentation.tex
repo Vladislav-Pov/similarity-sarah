@@ -1,0 +1,507 @@
+\documentclass[10pt,aspectratio=169,t]{beamer}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[english,russian]{babel}
+\usepackage{lmodern}
+\renewcommand{\familydefault}{\sfdefault}
+
+\usepackage{amsmath,amssymb,amsthm,bm}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{colortbl}
+\usepackage{graphicx}
+\usepackage[numbers,sort&compress]{natbib}
+
+\definecolor{primary}{HTML}{1B5E7A}
+\definecolor{primarydark}{HTML}{0F3D52}
+\definecolor{accent}{HTML}{E07A1F}
+\definecolor{accentdark}{HTML}{B85F0E}
+\definecolor{blockbg}{HTML}{F2F6F7}
+\definecolor{lighttext}{HTML}{4A4A4A}
+\definecolor{tablerow}{HTML}{EAF1F3}
+
+\setbeamertemplate{navigation symbols}{}
+
+\setbeamercolor{frametitle}{fg=primary,bg=white}
+\setbeamerfont{frametitle}{size=\Large,series=\bfseries}
+\setbeamertemplate{frametitle}{%
+  \vspace{4mm}\hspace{2mm}%
+  {\color{primary}\Large\bfseries\insertframetitle}\\[-1mm]
+  \hspace{2mm}\textcolor{accent}{\rule{4.2cm}{1mm}}%
+  \vspace{1mm}
+}
+
+\setbeamertemplate{headline}{}
+
+\setbeamertemplate{footline}{%
+  \hfill%
+  {\color{accent}\rule{1.6mm}{1.6mm}}\,%
+  {\color{primary}\scriptsize\bfseries\insertframenumber\,/\,\inserttotalframenumber}\hspace{4mm}\vspace{2mm}
+}
+
+\setbeamercolor{block title}{fg=white,bg=primary}
+\setbeamercolor{block body}{fg=black,bg=blockbg}
+\setbeamerfont{block title}{size=\small,series=\bfseries}
+\setbeamerfont{block body}{size=\footnotesize}
+
+\setbeamercolor{block title alerted}{fg=white,bg=accent}
+\setbeamercolor{block body alerted}{fg=black,bg=blockbg}
+
+\setbeamercolor{item}{fg=primary}
+\setbeamertemplate{itemize item}{\color{primary}$\blacktriangleright$}
+\setbeamertemplate{itemize subitem}{\color{accent}\textendash}
+
+\setbeamercolor{bibliography item}{fg=primary}
+\setbeamercolor{bibliography entry author}{fg=black}
+\setbeamercolor{bibliography entry title}{fg=black}
+\setbeamercolor{bibliography entry location}{fg=lighttext}
+\setbeamercolor{bibliography entry note}{fg=lighttext}
+\setbeamerfont{bibliography item}{size=\scriptsize}
+\setbeamerfont{bibliography entry author}{size=\scriptsize}
+\setbeamerfont{bibliography entry title}{size=\scriptsize}
+\setbeamerfont{bibliography entry location}{size=\scriptsize}
+\setbeamerfont{bibliography entry note}{size=\scriptsize}
+
+\AtBeginDocument{%
+  \setlength{\leftmargini}{1.2em}%
+  \setlength{\labelsep}{0.4em}%
+}
+
+\newcommand{\nablaf}[1]{\nabla(f - f_1)(#1)}
+\newcommand{\nablafi}[1]{\nabla(f_i - f_1)(#1)}
+
+\begin{document}
+
+% ============================================================
+%   Слайд 1 — Титульный
+% ============================================================
+\begingroup
+\setbeamertemplate{headline}{}
+\setbeamertemplate{footline}{}
+\setbeamercolor{background canvas}{bg=primarydark}
+\begin{frame}[plain]
+  \vspace*{0.8cm}
+  \hspace{0.5cm}{\color{accent}\rule{6cm}{0.6mm}}\\[5mm]
+  \hspace{0.5cm}{\color{white}\Large\bfseries Локальные методы распределённой оптимизации\\
+  \hspace*{0.5cm}без подсчёта полного градиента}\\[6mm]
+  \hspace{0.5cm}{\color{accent}\rule{6cm}{0.6mm}}
+
+  \vspace{1.2cm}
+  \hspace{0.5cm}{\color{white}\small
+  \begin{tabular}{@{}ll@{}}
+    Студент: & \quad \emph{Зайнуллин Амир Рустэмович, Б05-206д}, ФПМИ МФТИ \\
+    Руководитель: & \quad Безносиков Александр Николаевич, МФТИ \\
+  \end{tabular}}
+\end{frame}
+\endgroup
+
+
+% ============================================================
+%   Слайд 2 — Цель и задачи
+% ============================================================
+\begin{frame}{Цель и задачи дипломной работы}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+\begin{block}{Цель}
+Разработать \textbf{распределённый} алгоритм \textbf{невыпуклой} оптимизации, который одновременно
+\begin{itemize}
+  \item использует second-order similarity для ускорения сходимости,
+  \item обходится \textbf{без вычисления полного градиента} $\nabla f$ ни в одной точке,
+  \item использует $\mathcal{O}(d)$ памяти на сервере (не растёт с числом клиентов $n$).
+\end{itemize}
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Задачи}
+\begin{itemize}
+  \item проанализировать similarity-методы — SVRS/AccSVRS \citep{lin2023stochastic}, SVRP \citep{khaled2022faster} — и причину их зависимости от full grad;
+  \item проанализировать no-full-grad методы — SARAH \citep{nguyen2017sarah}, ZeroSARAH \citep{li2021zerosarah}, Shuffled SARAH \citep{beznosikov2024random};
+  \item предложить алгоритм, объединяющий оба подхода;
+  \item доказать невыпуклую сходимость с $\delta$-зависимой сложностью;
+  \item экспериментально сравнить с baseline методами — SVRS \citep{lin2023stochastic}, FedAvg \citep{mcmahan2017communication}.
+\end{itemize}
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+
+% ============================================================
+%   Слайд 3 — Актуальность
+% ============================================================
+\begin{frame}{Актуальность}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+\begin{block}{Почему это важно?}
+\begin{itemize}
+  \item Размеры моделей и датасетов растут \citep{kaplan2020scaling} $\Rightarrow$ более распространненым становится распределенное обучение.
+  \item Главный bottleneck - коммуникация: каждый раунд это $\mathcal{O}(n)$ векторов между сервером и каждым клиентом \citep{konevcny2016federated,kairouz2021advances}.
+  \item Прогресс измеряется не числом раундов, а числом \textbf{передаваемых векторов} \citep{arjevani2015communication}.
+\end{itemize}
+\end{block}
+
+\vspace{2mm}
+\begin{block}{Идея similarity}
+Если данные клиентов из одного распределения, локальные функции $f_i$ удовлетворяют: $\|\nabla^2 f_i - \nabla^2 f\| \le \delta$, причём часто $\delta \ll L$ \citep{hendrikx2020statistically}.
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Проблема в существующих методах}
+Две независимые линии работ:
+\begin{itemize}
+  \item \textbf{similarity-методы} \citep{lin2023stochastic,kovalev2022optimal} требуют full participation в начале каждой эпохи $\Rightarrow$ $\mathcal{O}(n)$ векторов на каждом обновлении;
+  \item \textbf{no-full-grad} методы \citep{li2021zerosarah,medyakov2025variance} не используют $\delta$ $\Rightarrow$ зависимость от $L$ (smoothness), не от $\delta$.
+\end{itemize}
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+
+% ============================================================
+%   Слайд 4 — Постановка задачи
+% ============================================================
+\begin{frame}{Постановка задачи}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+\begin{block}{Распределённая finite-sum задача}
+\[
+\min_{x \in \mathbb{R}^d}\; f(x) = \tfrac{1}{n}\sum_{i=1}^n f_i(x),
+\]
+\[
+f_i(x) = \tfrac{1}{m_i}\sum_{j=1}^{m_i}\ell(g(x,a_j^i),b_j^i).
+\]
+Сервер хранит $f_1$, клиенты — $f_2,\ldots,f_n$.
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Прокс-разложение \citep{lin2023stochastic}}
+Раскладываем $f$ на серверную и клиентскую части:
+\[
+f(w) = (f - f_1)(w) + f_1(w).
+\]
+Прокс-обновление:
+\[
+w_{t+1} = \mathrm{prox}_{\theta f_1}\bigl(w_t - \theta\,\nablaf{w_t}\bigr).
+\]
+$\nablaf{w_t}$ агрегирует клиентов; $f_1$ — на сервере.
+\end{block}
+
+\vspace{2mm}
+\begin{alertblock}{Основная работа алгоритма}
+Оценить $\nablaf{w_t}$ \emph{без} подсчета локальных градиентов каждого клиента. 
+\end{alertblock}
+\end{column}
+\end{columns}
+\end{frame}
+
+
+% ============================================================
+%   Слайд 5 — Second-order similarity
+% ============================================================
+% \begin{frame}{Second-order similarity}
+% \begin{columns}[T,onlytextwidth]
+% \begin{column}{0.48\textwidth}
+% \begin{block}{Определение}
+% Локальные функции $\{f_i\}_{i=1}^n$ удовлетворяют $\delta$-second-order similarity, если для всех $x\in\mathbb{R}^d$ и $i$:
+% \[
+% \|\nabla^2 f_i(x) - \nabla^2 f(x)\| \le \delta.
+% \]
+% \end{block}
+
+% \vspace{2mm}
+% \begin{block}{Связь со smoothness}
+% Если все $f_i$ $L$-гладкие, то $\delta \le 2L$ (по неравенству треугольника). Допущение \emph{строго слабее}, чем $L$-smoothness.
+% \end{block}
+% \end{column}
+
+% \begin{column}{0.48\textwidth}
+% \begin{block}{Откуда берётся \citep{hendrikx2020statistically}}
+% Если $f_i$ — эмпирические средние i.i.d.~семплов размера $m$ из общего распределения:
+% \[
+% \delta = \mathcal{O}\!\bigl(L/\sqrt{m}\bigr).
+% \]
+% В современном ML $m$ велико $\Rightarrow$ $\delta \ll L$.
+% \end{block}
+
+
+% \end{column}
+% \end{columns}
+% \end{frame}
+
+
+% ============================================================
+%   Слайд 6 — RW: similarity-методы
+% ============================================================
+\begin{frame}{Связанная работа: similarity-методы}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+\begin{block}{Newton-type линия}
+\begin{itemize}
+  \item \texttt{DANE} \citep{shamir2014communication} — communication-efficient Newton, только quadratic objectives.
+  \item \texttt{AIDE} \citep{reddi2016aide}, \texttt{DISCO} \citep{pmlr-v37-zhangb15}, \texttt{GIANT} \citep{wang2018giant} — улучшенные Newton-type.
+  \item \texttt{SONATA} \citep{sun2022distributed}, \texttt{Accelerated Extragradient} \citep{kovalev2022optimal} — оптимальное число раундов $\mathcal{O}\!\bigl(\sqrt{\delta/\mu}\log\tfrac{1}{\varepsilon}\bigr)$.
+\end{itemize}
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Stochastic similarity}
+\begin{itemize}
+  \item \texttt{SVRP, Catalyzed SVRP} \citep{khaled2022faster} — stochastic prox с VR, сложность $\mathcal{O}\bigl((n+\delta^2/\mu^2)\log\tfrac{1}{\varepsilon}\bigr)$.
+  \item \texttt{SVRS / AccSVRS} \citep{lin2023stochastic} — accelerated, оптимально по коммуникации $\mathcal{O}\bigl((n + n^{3/4}\sqrt{\delta/\mu})\log\tfrac{1}{\varepsilon}\bigr)$.
+\end{itemize}
+\end{block}
+
+\end{column}
+\end{columns}
+\end{frame}
+
+
+% ============================================================
+%   Слайд 7 — RW: no-full-gradient
+% ============================================================
+\begin{frame}{Связанная работа: no-full-gradient методы (centralized)}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.5\textwidth}
+\begin{block}{Эволюция variance reduction}
+\begin{itemize}
+  \item \texttt{SAG/SAGA} \citep{roux2012stochastic,defazio2014saga} — таблица всех градиентов, $\mathcal{O}(nd)$ памяти.
+  \item \texttt{SARAH/SPIDER} \citep{nguyen2017sarah,fang2018spider} — рекурсивный аппроксиматор, но \emph{периодический} обновление полного градиента.
+  \item \texttt{STORM} \citep{cutkosky2020momentumbasedvariancereductionnonconvex}, \texttt{PAGE} \citep{li2021page} — momentum / probabilistic switching.
+\end{itemize}
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Без full grad вообще}
+\begin{itemize}
+  \item \texttt{ZeroSARAH} \citep{li2021zerosarah} — первый VR-метод без подсчета полного градиента.
+  \item \texttt{Shuffled SARAH} \citep{beznosikov2024random} — random reshuffle построение аппроксиматора в течении эпохи.
+  \item Medyakov et al.~\cite{medyakov2025variance} — продолжение идеи прошлой работы на SVRG, SARAH.
+\end{itemize}
+\end{block}
+
+\vspace{2mm}
+\begin{alertblock}{Общий минус}
+Все методы \textbf{centralized} и не учитывают similarity $\Rightarrow$ сложность зависит от $L$, не от $\delta$.
+\end{alertblock}
+\end{column}
+\end{columns}
+\end{frame}
+
+
+% ============================================================
+%   Слайд 8 — RW: пересечение и gap
+% ============================================================
+\begin{frame}{Связанная работа: пересечение и gap}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+\begin{block}{Близкие работы}
+\begin{itemize}
+  \item Beznosikov \& Tak\'a\v{c}~\cite{beznosikov2024random} — Shuffled SARAH под similarity, но \textbf{strongly convex} и \textbf{centralized}.
+  \item \texttt{SILVER} \citep{oko2024silver} — non-convex distributed, без full grad, но \textbf{$\mathcal{O}(nd)$ памяти на сервере} .
+  \end{itemize}
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Незакрытая ниша}
+Ни один существующий метод не удовлетворяет одновременно \textbf{шести} условиям:
+\begin{itemize}
+  \item non-convex,
+  \item distributed,
+  \item finite-sum,
+  \item similarity-aware (сложность от $\delta$),
+  \item без full gradient,
+  \item $\mathcal{O}(d)$ server-memory.
+\end{itemize}
+\end{block}
+
+
+\end{column}
+\end{columns}
+\end{frame}
+
+
+% ============================================================
+%   Слайд 9 — Идея NFG-SS
+% ============================================================
+\begin{frame}{Основная идея \texttt{NFG-SS}}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.5\textwidth}
+\begin{block}{Два рекурсивных оценщика}
+\textbf{(а) SARAH-телескоп} $v_t^{(s)}$ — аппроксиматор $\nablaf{w_t}$:
+\[
+v_t^{(s)} = v_{t-1}^{(s)} + \tfrac{1}{b}\!\!\sum_{i\in B_t^{(s)}}\!\!\bigl[\nablafi{w_t^{(s)}} - \nablafi{w_{t-1}^{(s)}}\bigr].
+\]
+\textbf{(б) Среднее} $\tilde v_t^{(s)}$ по \emph{уже посчитанным} в эпохе градиентам:
+\[
+\tilde v_{t+1}^{(s)} = \tfrac{t-1}{t}\,\tilde v_t^{(s)} + \tfrac{1}{tb}\!\!\sum_{i\in B_t^{(s)}}\!\!\nablafi{w_t^{(s)}}.
+\]
+\end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+\begin{block}{Ключевое наблюдение}
+После полного обхода всех клиентов в эпохе:
+\[
+\tilde v_{\lceil n/b\rceil+1}^{(s)} = \tfrac{1}{n}\!\sum_{t}\!\sum_{i\in B_t^{(s)}}\!\!\nablafi{w_t^{(s)}}.
+\]
+\end{block}
+
+\end{column}
+\end{columns}
+\end{frame}
+
+
+% ============================================================
+%   Слайд 10 — Псевдокод
+% ============================================================
+\begin{frame}{Алгоритм \texttt{NFG-SS} — псевдокод}
+\vspace{-1mm}
+\begin{block}{NoFullGrad SARAH Similarity}
+\footnotesize
+\textbf{Input:} $w_0^{(0)}\in\mathbb{R}^d$;\quad
+$\tilde v_1^{(0)}=0,\ v_0^{(0)}=0$.\\
+\textbf{Параметры:} stepsize $\theta>0$,\ batch size $b$.\\[2pt]
+\textbf{for} epochs $s = 0,1,\ldots,S$ \textbf{do}
+\begin{enumerate}\setlength\itemsep{1pt}
+  \item Семплируем непересекающиеся батчи клиентов $B_1^{(s)},\ldots,B_{\lceil n/b\rceil}^{(s)}$ (покрывают всех клиентов).
+  \item $v_0^{(s)} = v^{(s)}\quad$ 
+  \item $w_1^{(s)} = \mathrm{prox}_{\theta f_1}\bigl(w_0^{(s)} - \theta\,v_0^{(s)}\bigr)$
+  \item \textbf{for} $t = 1,2,\ldots,\lceil n/b\rceil$ \textbf{do}
+  \begin{enumerate}\setlength\itemsep{1pt}
+    \item[(a)] $\tilde v_{t+1}^{(s)} = \frac{t-1}{t}\,\tilde v_t^{(s)} + \frac{1}{tb}\!\sum_{i\in B_t^{(s)}}\!\nablafi{w_t^{(s)}}$
+    \item[(b)] $v_t^{(s)} = v_{t-1}^{(s)} + \frac{1}{b}\!\sum_{i\in B_t^{(s)}}\!\bigl[\nablafi{w_t^{(s)}} - \nablafi{w_{t-1}^{(s)}}\bigr]$
+    \item[(c)] $w_{t+1}^{(s)} = \arg\min_w\bigl\{\langle v_t^{(s)},w\rangle + \tfrac{1}{2\theta}\|w - w_t^{(s)}\|^2 + f_1(w)\bigr\}$
+  \end{enumerate}
+  \item $w_0^{(s+1)} = w_{\lceil n/b\rceil+1}^{(s)}$,\quad
+  $\tilde v_1^{(s+1)} = 0$,\quad
+  $v^{(s+1)} = \tilde v_{\lceil n/b\rceil+1}^{(s)}\quad$ 
+\end{enumerate}
+\end{block}
+\end{frame}
+
+
+% ============================================================
+%   Слайд 11 — Theorem
+% ============================================================
+\begin{frame}{Теорема о сходимости}
+\begin{block}{Theorem 1}
+Пусть выполнены $\delta$-similarity и $f$ ограничена снизу. Запустим \texttt{NFG-SS} с шагом
+$\theta = c^*\,b/(\delta n)$, где $c^* = \sqrt{(-13+\sqrt{185})/(272e)}$.
+Тогда для достижения
+\[
+\tfrac{1}{S(n/b+1)}\!\!\sum_{s=1}^S\!\sum_{t=0}^{n/b}\!\|G_\theta(w_t^{(s)})\|^2 \le \varepsilon^2
+\]
+требуется
+\[
+N_{\mathrm{oracle}} = \mathcal{O}\!\Bigl(\tfrac{n\delta\Delta_1}{\varepsilon^2}\Bigr) + \mathcal{O}\!\Bigl(\tfrac{n^2\delta^2\Delta_2}{b\varepsilon^2}\Bigr),
+\]
+где $\Delta_1 = f(w^{(0)}) - f^*$, $\Delta_2 = \sum_j\|w_{j+1}^{(0)} - w_j^{(0)}\|^2$.
+\end{block}
+\end{frame}
+
+
+============================================================
+  Слайд 12 — Comparison table
+============================================================
+\begin{frame}{Сравнение методов}
+\vspace{-2mm}
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\footnotesize
+\begin{tabular}{@{}lcccl@{}}
+\toprule
+\textbf{Метод} & \textbf{Full grad?} & \textbf{Convexity} & \textbf{Memory} & \textbf{Complexity} \\
+\midrule
+\texttt{SVRS}\,\citep{lin2023stochastic}          & да  & $\mu$-SC      & $\mathcal{O}(d)$  & $\mathcal{O}\bigl((n+\sqrt{n} \delta/\mu)\log\tfrac{1}{\varepsilon}\bigr)$ \\
+\texttt{AccSVRS}\,\citep{lin2023stochastic}       & да  & $\mu$-SC      & $\mathcal{O}(d)$  & $\mathcal{O}\bigl((n + n^{3/4}\sqrt{\delta/\mu})\log\tfrac{1}{\varepsilon}\bigr)$ \\
+\texttt{Shuffled SARAH}\,\citep{beznosikov2024random}& нет & $\mu$-SC      & $\mathcal{O}(d)$  & $\mathcal{O}\bigl((nL/\mu + n^2\delta/\mu)\log\tfrac{1}{\varepsilon}\bigr)$ \\
+\texttt{SILVER}\,\citep{oko2024silver}            & нет & non-convex    & $\mathcal{O}(nd)$ & $\mathcal{O}\bigl(n + \delta n^{1/2}/\varepsilon^2\bigr)$ \\
+\texttt{SPAM}\,\citep{karagulyan2024spamstochasticproximalpoint}      & нет & non-convex    & $\mathcal{O}(d)$  & $\mathcal{O}\bigl((\delta+\sigma^2)/\varepsilon^2 + \delta\sigma/\varepsilon^3\bigr)$ \\
+\midrule
+\rowcolor{tablerow}\textbf{\texttt{NFG-SS} (наш)} & \textbf{нет} & \textbf{non-convex} & $\mathcal{O}(d)$ & $\mathcal{O}\bigl(n\delta\Delta_1/\varepsilon^2 + n^2\delta^2\Delta_2/(b\varepsilon^2)\bigr)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vspace{3mm}
+\begin{alertblock}{Что показывает таблица}
+\texttt{NFG-SS} — \emph{единственный} метод с полным набором свойств: \textbf{не использует $\nabla f$, не требует выпуклости, держит $\mathcal{O}(d)$ память на сервере}, и при этом сложность зависит от similarity-параметра $\delta$, а не $L$.
+\end{alertblock}
+\end{frame}
+
+
+% ============================================================
+%   Слайд 13 — Эксперимент
+% ============================================================
+\begin{frame}{Эксперимент: CIFAR-10 / ResNet-18}
+\vspace{-2mm}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.58\textwidth}
+\centering
+\includegraphics[width=\linewidth]{../figures/methods_comparison_accuracy.pdf}\\[-1mm]
+{\scriptsize Test accuracy vs.~\# transmitted vectors;}
+\end{column}
+
+\begin{column}{0.40\textwidth}
+\begin{block}{Постановка}
+\begin{itemize}
+  \item CIFAR-10, ResNet-18 \citep{krizhevsky2009learning,he2016deepresnet}.
+  \item $n=11$: 1 сервер ($f_1$) + 10 клиентов.
+  \item Бейзлайны: \texttt{SVRS} с честным подсчетом полного градиента, \texttt{FedAvg} \citep{mcmahan2017communication} в communication-matched режиме.
+\end{itemize}
+\end{block}
+
+
+
+\end{column}
+\end{columns}
+\end{frame}
+
+
+% ============================================================
+%   Слайд 14 — Заключение
+% ============================================================
+\begin{frame}{Заключение}
+\vspace{3mm}
+\begin{block}{Итог работы}
+Предложен метод \texttt{NFG-SS} — новый распределенный алгоритм для невыпуклой оптимизации под second-order similarity предположением, который полностью устраняет необходимость обновления полного градиента на каждом раунде.
+\end{block}
+
+
+
+\end{frame}
+
+
+% ============================================================
+%   Слайд 15 — Спасибо
+% ============================================================
+\begin{frame}[plain]
+\vspace*{0pt plus 1fill}
+\begin{center}
+{\Huge\bfseries\color{primary} Спасибо за внимание!}\\[8mm]
+{\color{accent}\rule{4cm}{1mm}}\\[8mm]
+{\large\color{lighttext}}
+\end{center}
+\vspace*{0pt plus 2fill}
+\end{frame}
+
+
+% ============================================================
+%   Литература
+% ============================================================
+\begin{frame}[allowframebreaks]{Список литературы}
+\bibliographystyle{plain}
+\bibliography{bibliography}
+\end{frame}
+
+
+\end{document}

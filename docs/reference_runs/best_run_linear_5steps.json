@@ -1,0 +1,55 @@
+{
+  "_meta": {
+    "wandb_group": "bnfg-grid-20260506-032232",
+    "started_at": "2026-05-06T00:22:34Z",
+    "hardware": "NVIDIA A100-PCIE-40GB",
+    "git_commit": "aef4317168c42049c596f7ec5c562724b30e9e2d",
+    "notes": "Best-known NFG-SS config with prox_v_schedule=linear and prox_num_steps=5."
+  },
+  "data": {
+    "name": "cifar10",
+    "val_fraction": 0.2,
+    "augment_server": false
+  },
+  "model": {
+    "name": "resnet18_32x32",
+    "num_classes": 10
+  },
+  "partition": {
+    "name": "uniform",
+    "server_fraction": 0.5
+  },
+  "algorithm": {
+    "name": "batched_nfg_sarah",
+    "theta": 0.2,
+    "num_epochs": 100,
+    "num_clients": 10,
+    "batch_size_clients": 1,
+    "prox_solver": "accvrs_batch_sgd",
+    "prox_lr": null,
+    "prox_L1": 200,
+    "prox_lr_factor": 0.1,
+    "prox_num_steps": 5,
+    "prox_momentum": 0.9,
+    "prox_weight_decay": 0.1,
+    "prox_grad_clip": 0,
+    "prox_eval_batches": 4,
+    "prox_v_schedule": "linear",
+    "prox_inner_decay_factor": 1,
+    "prox_inner_decay_period": null,
+    "prox_include_linear_term": false,
+    "prox_inner_early_stop_ratio": 0.0001
+  },
+  "runtime": {
+    "device": "auto",
+    "batch_size": 512,
+    "large_batch_size": 512,
+    "batch_size_server_grad": 512,
+    "batch_size_server_prox": 512,
+    "batch_size_data_clients": 512,
+    "num_workers": 4,
+    "eval_every": 1,
+    "prox_lr_schedule": {"kind": "constant"}
+  },
+  "seed": 42
+}

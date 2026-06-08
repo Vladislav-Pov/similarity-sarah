@@ -1,0 +1,174 @@
+\begin{thebibliography}{10}
+
+\bibitem{arjevani2015communication}
+Yossi Arjevani and Ohad Shamir.
+\newblock Communication complexity of distributed convex learning and
+  optimization.
+\newblock {\em Advances in neural information processing systems}, 28, 2015.
+
+\bibitem{beznosikov2024random}
+Aleksandr Beznosikov and Martin Tak{\'a}{\v{c}}.
+\newblock Random-reshuffled sarah does not need full gradient computations.
+\newblock {\em Optimization Letters}, 18(3):727--749, 2024.
+
+\bibitem{cutkosky2020momentumbasedvariancereductionnonconvex}
+Ashok Cutkosky and Francesco Orabona.
+\newblock Momentum-based variance reduction in non-convex sgd, 2020.
+
+\bibitem{defazio2014saga}
+Aaron Defazio, Francis Bach, and Simon Lacoste-Julien.
+\newblock Saga: A fast incremental gradient method with support for
+  non-strongly convex composite objectives.
+\newblock {\em Advances in neural information processing systems}, 27, 2014.
+
+\bibitem{fang2018spider}
+Cong Fang, Chris~Junchi Li, Zhouchen Lin, and Tong Zhang.
+\newblock Spider: Near-optimal non-convex optimization via stochastic
+  path-integrated differential estimator.
+\newblock {\em Advances in neural information processing systems}, 31, 2018.
+
+\bibitem{he2016deepresnet}
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun.
+\newblock Deep residual learning for image recognition.
+\newblock In {\em Proceedings of the IEEE conference on computer vision and
+  pattern recognition}, pages 770--778, 2016.
+
+\bibitem{hendrikx2020statistically}
+Hadrien Hendrikx, Lin Xiao, Sebastien Bubeck, Francis Bach, and Laurent
+  Massoulie.
+\newblock Statistically preconditioned accelerated gradient method for
+  distributed optimization.
+\newblock In {\em International conference on machine learning}, pages
+  4203--4227. PMLR, 2020.
+
+\bibitem{kairouz2021advances}
+Peter Kairouz and H~Brendan McMahan.
+\newblock Advances and open problems in federated learning.
+\newblock {\em Foundations and trends in machine learning}, 14(1-2):1--210,
+  2021.
+
+\bibitem{kaplan2020scaling}
+Jared Kaplan, Sam McCandlish, Tom Henighan, Tom~B. Brown, Benjamin Chess, Rewon
+  Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei.
+\newblock Scaling laws for neural language models.
+\newblock {\em arXiv preprint arXiv:2001.08361}, 2020.
+
+\bibitem{karagulyan2024spamstochasticproximalpoint}
+Avetik Karagulyan, Egor Shulgin, Abdurakhmon Sadiev, and Peter Richtárik.
+\newblock Spam: Stochastic proximal point method with momentum variance
+  reduction for non-convex cross-device federated learning, 2024.
+
+\bibitem{khaled2022faster}
+Ahmed Khaled and Chi Jin.
+\newblock Faster federated optimization under second-order similarity.
+\newblock {\em arXiv preprint arXiv:2209.02257}, 2022.
+
+\bibitem{konevcny2016federated}
+Jakub Kone{\v{c}}n{\`y}, H~Brendan McMahan, Felix~X Yu, Peter Richt{\'a}rik,
+  Ananda~Theertha Suresh, and Dave Bacon.
+\newblock Federated learning: Strategies for improving communication
+  efficiency.
+\newblock {\em arXiv preprint arXiv:1610.05492}, 2016.
+
+\bibitem{kovalev2022optimal}
+Dmitry Kovalev, Aleksandr Beznosikov, Ekaterina Borodich, Alexander Gasnikov,
+  and Gesualdo Scutari.
+\newblock Optimal gradient sliding and its application to optimal distributed
+  optimization under similarity.
+\newblock {\em Advances in Neural Information Processing Systems},
+  35:33494--33507, 2022.
+
+\bibitem{krizhevsky2009learning}
+Alex Krizhevsky, Geoffrey Hinton, et~al.
+\newblock Learning multiple layers of features from tiny images.
+\newblock 2009.
+
+\bibitem{li2021page}
+Zhize Li, Hongyan Bao, Xiangliang Zhang, and Peter Richt{\'a}rik.
+\newblock Page: A simple and optimal probabilistic gradient estimator for
+  nonconvex optimization.
+\newblock In {\em International conference on machine learning}, pages
+  6286--6295. PMLR, 2021.
+
+\bibitem{li2021zerosarah}
+Zhize Li, Slavom{\'\i}r Hanzely, and Peter Richt{\'a}rik.
+\newblock Zerosarah: Efficient nonconvex finite-sum optimization with zero full
+  gradient computation.
+\newblock {\em arXiv preprint arXiv:2103.01447}, 2021.
+
+\bibitem{lin2023stochastic}
+Dachao Lin, Yuze Han, Haishan Ye, and Zhihua Zhang.
+\newblock Stochastic distributed optimization under average second-order
+  similarity: Algorithms and analysis.
+\newblock {\em Advances in Neural Information Processing Systems},
+  36:1849--1862, 2023.
+
+\bibitem{mcmahan2017communication}
+Brendan McMahan, Eider Moore, Daniel Ramage, Seth Hampson, and Blaise~Aguera
+  y~Arcas.
+\newblock Communication-efficient learning of deep networks from decentralized
+  data.
+\newblock In {\em Artificial intelligence and statistics}, pages 1273--1282.
+  Pmlr, 2017.
+
+\bibitem{medyakov2025variance}
+Daniil Medyakov, Gleb Molodtsov, Savelii Chezhegov, Alexey Rebrikov, and
+  Aleksandr Beznosikov.
+\newblock Variance reduction methods do not need to compute full gradients:
+  Improved efficiency through shuffling.
+\newblock {\em arXiv preprint arXiv:2502.14648}, 2025.
+
+\bibitem{nguyen2017sarah}
+Lam~M Nguyen, Jie Liu, Katya Scheinberg, and Martin Tak{\'a}{\v{c}}.
+\newblock Sarah: A novel method for machine learning problems using stochastic
+  recursive gradient.
+\newblock In {\em International conference on machine learning}, pages
+  2613--2621. PMLR, 2017.
+
+\bibitem{oko2024silver}
+Kazusato Oko, Shunta Akiyama, Denny Wu, Tomoya Murata, and Taiji Suzuki.
+\newblock {SILVER}: Single-loop variance reduction and application to federated
+  learning.
+\newblock In {\em Forty-first International Conference on Machine Learning},
+  2024.
+
+\bibitem{reddi2016aide}
+Sashank~J Reddi, Jakub Kone{\v{c}}n{\`y}, Peter Richt{\'a}rik, Barnab{\'a}s
+  P{\'o}cz{\'o}s, and Alex Smola.
+\newblock Aide: Fast and communication efficient distributed optimization.
+\newblock {\em arXiv preprint arXiv:1608.06879}, 2016.
+
+\bibitem{roux2012stochastic}
+Nicolas Roux, Mark Schmidt, and Francis Bach.
+\newblock A stochastic gradient method with an exponential convergence \_rate
+  for finite training sets.
+\newblock {\em Advances in neural information processing systems}, 25, 2012.
+
+\bibitem{shamir2014communication}
+Ohad Shamir, Nati Srebro, and Tong Zhang.
+\newblock Communication-efficient distributed optimization using an approximate
+  newton-type method.
+\newblock In {\em International conference on machine learning}, pages
+  1000--1008. PMLR, 2014.
+
+\bibitem{sun2022distributed}
+Ying Sun, Gesualdo Scutari, and Amir Daneshmand.
+\newblock Distributed optimization based on gradient tracking revisited:
+  Enhancing convergence rate via surrogation.
+\newblock {\em SIAM Journal on Optimization}, 32(2):354--385, 2022.
+
+\bibitem{wang2018giant}
+Shusen Wang, Fred Roosta, Peng Xu, and Michael~W Mahoney.
+\newblock Giant: Globally improved approximate newton method for distributed
+  optimization.
+\newblock {\em Advances in neural information processing systems}, 31, 2018.
+
+\bibitem{pmlr-v37-zhangb15}
+Yuchen Zhang and Xiao Lin.
+\newblock Disco: Distributed optimization for self-concordant empirical loss.
+\newblock In Francis Bach and David Blei, editors, {\em Proceedings of the 32nd
+  International Conference on Machine Learning}, volume~37 of {\em Proceedings
+  of Machine Learning Research}, pages 362--370, Lille, France, 07--09 Jul
+  2015. PMLR.
+
+\end{thebibliography}
