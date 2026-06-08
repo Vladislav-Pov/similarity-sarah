@@ -4,12 +4,6 @@ The reference NFG-SS runs require that a fixed seed maps to a fixed result.
 :func:`set_seed` seeds every RNG the pipeline touches; passing
 ``deterministic=True`` additionally forces PyTorch onto deterministic kernels
 and pins cuDNN, trading a little speed for bit-stable trajectories.
-
-Notes
------
-``np.random`` is still seeded for parity with the pre-rewrite ``utils.set_seed``
-so the RNG-draw order is unchanged; the numpy dependency is slated for removal
-in a later cleanup milestone.
 """
 
 from __future__ import annotations
@@ -17,7 +11,6 @@ from __future__ import annotations
 import os
 import random
 
-import numpy as np
 import torch
 
 
@@ -27,7 +20,7 @@ def set_seed(seed: int, *, deterministic: bool = False) -> None:
     Parameters
     ----------
     seed:
-        Seed shared by ``random``, ``numpy``, and ``torch`` (CPU and CUDA).
+        Seed shared by ``random`` and ``torch`` (CPU and CUDA).
     deterministic:
         If ``True``, also enable PyTorch deterministic algorithms and pin
         cuDNN. Some kernels lack a deterministic implementation; those emit a
@@ -41,7 +34,6 @@ def set_seed(seed: int, *, deterministic: bool = False) -> None:
     subsequent PyTorch call in the interpreter, not just the next run.
     """
     random.seed(seed)
-    np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
@@ -70,9 +62,7 @@ def seed_worker(worker_id: int) -> None:
     """``DataLoader`` ``worker_init_fn`` that makes worker RNGs reproducible.
 
     PyTorch derives each worker's base seed from the main process generator;
-    we propagate it to ``numpy`` and ``random`` so augmentation/shuffling in
-    workers is reproducible across runs.
+    we propagate it to ``random`` so any stdlib-random shuffling in workers is
+    reproducible across runs.
     """
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
+    random.seed(torch.initial_seed() % 2**32)

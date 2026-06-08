@@ -34,10 +34,9 @@ def main(cfg: DictConfig) -> None:
 
     search = cfg.get("search")
     if search is not None and search.get("enabled", False):
-        # Hyperparameter search still runs on the legacy runner (migrated in M7).
-        from similarity_sarah.runtime.runner import Runner
+        from similarity_sarah.runtime.search_runner import run_search
 
-        Runner(cfg).run()
+        run_search(search, cfg)
         return
 
     from similarity_sarah.runtime.loop import run_experiment

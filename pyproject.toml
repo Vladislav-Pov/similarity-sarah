@@ -6,6 +6,8 @@
 [tool.ruff]
 target-version = "py310"
 line-length = 100
+# Pre-rewrite hyperparameter-search backend; functional, not yet re-typed.
+extend-exclude = ["similarity_sarah/runtime/search.py"]
 
 [tool.ruff.lint]
 # Conservative, high-signal rule set. Widened as the rewrite lands more modules.
@@ -21,19 +23,21 @@ ignore_missing_imports = true       # torch/torchvision ship partial stubs
 warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_optional = true
-# Only the rewritten modules are checked; legacy imports are followed silently.
+# The rewritten modules are checked; the older data/model/task helpers and the
+# pre-rewrite search backend are functional but not yet re-typed.
 follow_imports = "silent"
 files = [
   "similarity_sarah/core",
   "similarity_sarah/prox",
-  "similarity_sarah/algorithms/base.py",
-  "similarity_sarah/algorithms/nfg_ss.py",
-  "similarity_sarah/algorithms/svrs.py",
-  "similarity_sarah/algorithms/fedavg.py",
+  "similarity_sarah/algorithms",
+  "similarity_sarah/experimental",
   "similarity_sarah/data/loaders.py",
   "similarity_sarah/models/__init__.py",
+  "similarity_sarah/runtime/__init__.py",
   "similarity_sarah/runtime/metrics.py",
   "similarity_sarah/runtime/loop.py",
+  "similarity_sarah/runtime/scheduler.py",
+  "similarity_sarah/runtime/search_runner.py",
   "similarity_sarah/registry.py",
   "similarity_sarah/spec.py",
   "main.py",

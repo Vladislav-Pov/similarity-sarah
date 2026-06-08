@@ -1,9 +1,8 @@
-"""``core.params`` must be a bit-identical port of the ``utils`` equivalents."""
+"""Unit tests for the core parameter-list utilities."""
 
 import torch
 import torch.nn as nn
 
-from similarity_sarah import utils
 from similarity_sarah.core import params
 
 
@@ -22,32 +21,24 @@ def test_get_set_roundtrip():
         assert torch.equal(orig, q.data)
 
 
-def test_norms_match_utils():
-    p = params.get_params(_model())
-    assert params.compute_param_norm_sq(p) == utils.compute_param_norm_sq(p)
-    assert params.compute_param_norm(p) == utils.compute_param_norm(p)
+def test_norms_against_analytic():
+    p = [torch.tensor([3.0, 4.0]), torch.tensor([[12.0]])]  # 3,4,12 -> norm 13
+    assert params.compute_param_norm_sq(p) == 169.0
+    assert params.compute_param_norm(p) == 13.0
 
 
-def test_diff_norm_matches_utils():
-    a = params.get_params(_model())
-    b = [t + 0.3 for t in a]
-    assert params.diff_param_norm(a, b) == utils.diff_param_norm(a, b)
+def test_diff_norm():
+    a = [torch.tensor([1.0, 2.0])]
+    b = [torch.tensor([1.0, 5.0])]
+    assert params.diff_param_norm(a, b) == 3.0
 
 
-def test_add_and_scale_match_utils():
-    a1 = params.get_params(_model())
-    a2 = params.clone_params(a1)
-    src = [t * 2 for t in a1]
-
-    params.add_params_(a1, src, alpha=0.5)
-    utils.add_params_(a2, src, alpha=0.5)
-    for x, y in zip(a1, a2):
-        assert torch.equal(x, y)
-
-    params.scale_params_(a1, 0.7)
-    utils.scale_params_(a2, 0.7)
-    for x, y in zip(a1, a2):
-        assert torch.equal(x, y)
+def test_add_and_scale():
+    a = [torch.ones(3)]
+    params.add_params_(a, [torch.full((3,), 2.0)], alpha=0.5)  # 1 + 0.5*2 = 2
+    assert torch.equal(a[0], torch.full((3,), 2.0))
+    params.scale_params_(a, 0.5)  # 2 * 0.5 = 1
+    assert torch.equal(a[0], torch.ones(3))
 
 
 def test_zeros_like_params():
@@ -55,3 +46,4 @@ def test_zeros_like_params():
     z = params.zeros_like_params(m)
     assert len(z) == len(list(m.parameters()))
     assert all(t.abs().sum().item() == 0.0 for t in z)
+    assert params.zeros_like_params(z)[0].shape == z[0].shape

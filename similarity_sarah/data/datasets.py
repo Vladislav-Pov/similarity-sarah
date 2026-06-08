@@ -24,11 +24,10 @@ otherwise use the deterministic transform.
 from __future__ import annotations
 
 import torch
-from omegaconf import DictConfig
 import torchvision
 import torchvision.transforms as T
+from omegaconf import DictConfig
 from torch.utils.data import Dataset, TensorDataset, random_split
-
 
 CIFAR10_MEAN = (0.4914, 0.4822, 0.4465)
 CIFAR10_STD = (0.2470, 0.2435, 0.2616)

@@ -2,7 +2,6 @@
 
 import random
 
-import numpy as np
 import torch
 
 from similarity_sarah.core.repro import make_generator, set_seed
@@ -16,13 +15,12 @@ def test_set_seed_makes_torch_reproducible():
     assert torch.equal(a, b)
 
 
-def test_set_seed_seeds_python_and_numpy():
+def test_set_seed_seeds_python_random():
     set_seed(7)
-    r1, n1 = random.random(), float(np.random.rand())
+    r1 = random.random()
     set_seed(7)
-    r2, n2 = random.random(), float(np.random.rand())
+    r2 = random.random()
     assert r1 == r2
-    assert n1 == n2
 
 
 def test_deterministic_flag_enables_torch_deterministic():

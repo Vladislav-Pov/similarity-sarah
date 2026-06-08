@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import math
 import time
+from collections.abc import Callable
 
 import torch
 
@@ -76,7 +77,11 @@ class TrainLoop:
         lr = getattr(prox, "lr", None)
         return None if lr is None else float(lr)
 
-    def run(self) -> dict[str, float]:
+    def run(
+        self,
+        *,
+        report_intermediate: Callable[[int, float], bool] | None = None,
+    ) -> dict[str, float]:
         spec = self.spec
         algo_name = spec.algorithm_name
         base_prox_lr = self._base_prox_lr()
@@ -105,12 +110,22 @@ class TrainLoop:
                 best_val_acc = max(best_val_acc, val.get("accuracy", -1.0))
                 best_val_loss = min(best_val_loss, val.get("loss", float("inf")))
 
+                if report_intermediate is not None and report_intermediate(
+                    step, float(val.get("accuracy", -1.0))
+                ):
+                    break
+
         summary = {"best_val_accuracy": best_val_acc, "best_val_loss": best_val_loss}
         self.logger.log_summary(algo=algo_name, metrics=summary)
         return summary
 
 
-def run_experiment(spec: RunSpec, *, logger: MetricsLogger | None = None) -> dict[str, float]:
+def run_experiment(
+    spec: RunSpec,
+    *,
+    logger: MetricsLogger | None = None,
+    report_intermediate: Callable[[int, float], bool] | None = None,
+) -> dict[str, float]:
     """Build everything from ``spec`` and train; return the run summary."""
     set_seed(spec.seed, deterministic=spec.runtime.deterministic)
     generator = make_generator(spec.seed) if spec.runtime.deterministic else None
@@ -132,4 +147,4 @@ def run_experiment(spec: RunSpec, *, logger: MetricsLogger | None = None) -> dic
         algorithm=algo, model=model, data=data, task=task, device=device, spec=spec,
         logger=logger or NullLogger(),
     )
-    return loop.run()
+    return loop.run(report_intermediate=report_intermediate)

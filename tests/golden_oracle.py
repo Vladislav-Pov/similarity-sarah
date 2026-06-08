@@ -19,7 +19,7 @@ configs (`docs/reference_runs/*.json`) are GPU jobs beyond the 5-minute local
 budget; reproduce them on the original hardware from baseline commit 4ca4873.
 
 Important: ``prox_v_schedule`` is a NO-OP on the AccVRS path
-(``AccvrsBatchSGDProx`` neither accepts nor reads it), so ``constant`` and
+(``AccvrsBatchSGD`` neither accepts nor reads it), so ``constant`` and
 ``linear`` at the same ``num_steps`` are bit-identical here by construction —
 asserted in ``test_golden.py``.
 """
@@ -34,10 +34,11 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset, Subset, TensorDataset, random_split
 
-from similarity_sarah.algorithms.batched_nfg_sarah import BatchedNoFullGradSARAH
+from similarity_sarah.algorithms.base import AlgorithmCtx
+from similarity_sarah.algorithms.nfg_ss import NFGSS
 from similarity_sarah.core.repro import set_seed
 from similarity_sarah.models.simple_cnn import SimpleCNN
-from similarity_sarah.runtime.prox_solver_accvrs import AccvrsBatchSGDProx
+from similarity_sarah.prox import AccvrsBatchSGD
 
 SEED = 42
 DEVICE = "cpu"
@@ -140,15 +141,15 @@ def build_fast_setup():
 
 
 def build_and_run(variant: FastVariant) -> dict[str, object]:
-    """Run one NFG-SS epoch via the *pre-rewrite* code; return its signature.
+    """Run one NFG-SS epoch on the rewritten code; return its signature.
 
-    Returns ``{"weight_sha256": str, "metrics": dict[str, float]}``. This is
-    the captured-golden producer; the rewritten code is checked against the
-    committed goldens in ``tests/test_nfg_ss.py``.
+    Returns ``{"weight_sha256": str, "metrics": dict[str, float]}``. The
+    committed goldens were captured (at M1) from the pre-rewrite code; this
+    function reproduces them with the rewritten NFG-SS + AccVRS solver.
     """
     model, server_grad, server_prox, clients, loss_fn, device = build_fast_setup()
 
-    solver = AccvrsBatchSGDProx(
+    solver = AccvrsBatchSGD(
         num_steps=variant.prox_num_steps,
         lr=None,
         L1=200.0,
@@ -162,14 +163,7 @@ def build_and_run(variant: FastVariant) -> dict[str, object]:
         include_linear_term=False,
         eval_batches=2,
     )
-    algo = BatchedNoFullGradSARAH(theta=0.2, batch_size_clients=1, prox_solver=solver)
-    algo.initialize(
-        model=model,
-        server_grad_loader=server_grad,
-        server_prox_loader=server_prox,
-        client_loaders=clients,
-        loss_fn=loss_fn,
-        device=device,
-    )
+    algo = NFGSS(theta=0.2, batch_size_clients=1, prox_solver=solver)
+    algo.bind(AlgorithmCtx(model, server_grad, server_prox, clients, loss_fn, device))
     metrics = {k: float(v) for k, v in algo.run_epoch(0).items()}
     return {"weight_sha256": _weight_sha256(model), "metrics": metrics}

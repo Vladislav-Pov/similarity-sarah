@@ -189,10 +189,7 @@ class GridSearch:
 
     def run(
         self,
-        evaluator: Callable[
-            [int, dict[str, DictConfig], dict[str, object]],
-            dict[str, object],
-        ],
+        evaluator: Callable[..., dict[str, object]],
     ) -> dict[str, object]:
         best: dict[str, object] = {"score": -float("inf")}
         for idx, params in enumerate(self._iter_trials()):
