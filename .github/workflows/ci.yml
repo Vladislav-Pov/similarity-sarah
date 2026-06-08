@@ -29,9 +29,16 @@ jobs:
             similarity_sarah/algorithms/__init__.py \
             similarity_sarah/algorithms/base.py \
             similarity_sarah/algorithms/nfg_ss.py \
+            similarity_sarah/algorithms/svrs.py \
+            similarity_sarah/algorithms/fedavg.py \
+            similarity_sarah/data/loaders.py \
+            similarity_sarah/models/__init__.py \
+            similarity_sarah/runtime/metrics.py \
+            similarity_sarah/runtime/loop.py \
             similarity_sarah/registry.py \
             similarity_sarah/spec.py \
             similarity_sarah/experimental \
+            main.py \
             tests \
             scripts/capture_golden.py
 

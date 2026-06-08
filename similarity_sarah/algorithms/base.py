@@ -18,12 +18,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from similarity_sarah.registry import Registry
+
+if TYPE_CHECKING:
+    from similarity_sarah.spec import RunSpec
 
 
 class BaseAlgorithm(ABC):
@@ -99,6 +103,28 @@ class Algorithm(ABC):
     @abstractmethod
     def run_epoch(self, epoch: int) -> dict[str, float]:
         """Execute one outer epoch and return a metrics dict."""
+
+    @classmethod
+    def from_spec(cls, spec: RunSpec) -> Algorithm:
+        """Build an algorithm from a :class:`RunSpec` (overridden by subclasses)."""
+        raise NotImplementedError(f"{cls.__name__} does not implement from_spec")
+
+    def initialize(
+        self,
+        model: nn.Module,
+        server_grad_loader: DataLoader,
+        server_prox_loader: DataLoader,
+        client_loaders: list[DataLoader],
+        loss_fn: nn.Module,
+        device: torch.device,
+    ) -> None:
+        """Legacy six-argument bind, for the pre-rewrite runner (removed in M7)."""
+        self.bind(
+            AlgorithmCtx(
+                model, server_grad_loader, server_prox_loader,
+                client_loaders, loss_fn, device,
+            )
+        )
 
 
 ALGORITHMS: Registry[Algorithm] = Registry("algorithm")

@@ -1,28 +1,12 @@
-"""SVRS — Server-side Variance-Reduced Similarity baseline.
+"""SVRS baseline (Lin et al. 2023, arXiv:2304.07504, Algorithm 1, SVRS^{1ep}).
 
-Reference: Lin, Karagulyan, Richtárik, "Stochastic Distributed
-Optimization under Average Second-order Similarity: Algorithms and
-Analysis" — https://arxiv.org/pdf/2304.07504  (Algorithm 1, SVRS¹ᵉᵖ).
-
-Compared to *Batched No Full Grad SARAH* the algorithm differs in:
-
-1. At the start of each outer round we compute the deterministic
-   anchor ``g_ref = (1/n) Σᵢ ∇(fᵢ − f₁)(w_ref)`` (full local
-   gradients on each node — see ``_refresh_anchor``).
-2. The epoch length ``T ∼ Geom(p)`` with ``p = 1/num_clients``;
-   ``E[T] = num_clients``.  This replaces the deterministic
-   permutation-based pass we used previously.
-3. Each inner step samples ONE client ``i_t ∼ Unif([num_clients])``
-   (Algorithm 1 of the paper has no client-batching) and builds
-   ``v_t = g_ref + ∇(f_{i_t} − f₁)(w_t) − ∇(f_{i_t} − f₁)(w_ref)``.
-4. The proximal step is taken on the server's local function ``f₁``
-   exactly like in BNFG, so the existing :class:`ProxSolver` is
-   re-used.
-
-The SARAH-style same-batch telescope ``∇f_i(w_t) − ∇f_i(w_ref)`` uses
-one fixed minibatch per client per step (pre-sampled and reused at
-both points) — without that, the correction would behave like a fresh
-stochastic gradient with no variance reduction.
+Difference from NFG-SS: at the start of each outer round SVRS computes a
+*deterministic* full-gradient anchor ``g_ref = (1/n) sum_i grad(f_i - f1)(w_ref)``
+(``_refresh_anchor``), then runs ``T ~ Geom(1/num_clients)`` inner steps, each
+sampling one client and forming ``v_t = g_ref + grad(f_i - f1)(w_t) -
+grad(f_i - f1)(w_ref)`` on a shared minibatch. The prox step on ``f1`` is
+identical to NFG-SS, so the same :class:`ProxSolver` is reused. The O(n) anchor
+refresh is the cost SVRS pays that NFG-SS avoids.
 """
 
 from __future__ import annotations
@@ -30,187 +14,140 @@ from __future__ import annotations
 import logging
 
 import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
 
-from similarity_sarah.algorithms.base import BaseAlgorithm
-from similarity_sarah.runtime.prox_solver import ProxSolver
-from similarity_sarah.utils import (
+from similarity_sarah.algorithms.base import ALGORITHMS, Algorithm, AlgorithmCtx
+from similarity_sarah.core.grads import compute_batch_gradient, compute_full_gradient
+from similarity_sarah.core.params import (
     ParamList,
-    add_params_,
     clone_params,
-    compute_batch_gradient,
-    compute_full_gradient,
     compute_param_norm,
     get_params,
     set_params,
     zeros_like_params,
 )
+from similarity_sarah.prox import ProxSolver, build_prox_solver
+from similarity_sarah.spec import RunSpec
 
 logger = logging.getLogger(__name__)
 
 
-class SVRS(BaseAlgorithm):
-    """SVRS baseline (similarity-based variance reduction)."""
+@ALGORITHMS.register("svrs")
+class SVRS(Algorithm):
+    """Server-side variance-reduced similarity with a full-gradient anchor."""
 
     def __init__(
-        self,
-        theta: float,
-        batch_size_clients: int,
-        prox_solver: ProxSolver,
+        self, theta: float, batch_size_clients: int, prox_solver: ProxSolver
     ) -> None:
-        self.theta = theta
-        # Algorithm 1 of Lin et al. 2023 has *one* client per inner step
-        # (i_t ∼ Unif([n])).  We keep ``batch_size_clients`` as a no-op
-        # field for API parity with BNFG / distributed_sarah, but force
-        # B = 1 internally and warn if the user asked for more.
+        self.theta = float(theta)
         if batch_size_clients != 1:
             logger.warning(
-                "SVRS: batch_size_clients=%d ignored — Algorithm 1 of the "
-                "original paper samples exactly one client per inner step "
-                "(B=1).  Forcing B=1.",
+                "SVRS: batch_size_clients=%d ignored — Algorithm 1 samples one "
+                "client per inner step (B=1). Forcing B=1.",
                 batch_size_clients,
             )
         self.batch_size_clients = 1
         self.prox_solver = prox_solver
-
-        self.model: nn.Module | None = None
-        self.server_grad_loader: DataLoader | None = None
-        self.server_prox_loader: DataLoader | None = None
-        self.client_loaders: list[DataLoader] = []
-        self.loss_fn: nn.Module | None = None
-        self.device: torch.device = torch.device("cpu")
-        self.num_clients: int = 0
-        self.total_nodes: int = 0
-
-        # Anchor point and its global-similarity gradient estimator.
+        self._ctx: AlgorithmCtx | None = None
         self._w_ref: ParamList = []
         self._g_ref: ParamList = []
 
-    def initialize(
-        self,
-        model: nn.Module,
-        server_grad_loader: DataLoader,
-        server_prox_loader: DataLoader,
-        client_loaders: list[DataLoader],
-        loss_fn: nn.Module,
-        device: torch.device,
-    ) -> None:
-        self.model = model
-        self.server_grad_loader = server_grad_loader
-        self.server_prox_loader = server_prox_loader
-        self.client_loaders = client_loaders
-        self.loss_fn = loss_fn
-        self.device = device
-        self.num_clients = len(client_loaders)
-        self.total_nodes = self.num_clients + 1
-        self._w_ref = get_params(model)
-        self._g_ref = zeros_like_params(model)
-
-    # ------------------------------------------------------------------
-    def _refresh_anchor(self) -> None:
-        """Compute ``g_ref = (1/n) Σ_i ∇(f_i − f₁)(w_ref)`` exactly.
-
-        Uses :func:`compute_full_gradient` (one full pass per loader) so that
-        ``g_ref`` is deterministic — no minibatch noise carries into ``v_t``
-        through the anchor.  Matches the paper's ``∇f(w_0)`` precomputation
-        (just shifted by ``∇f_1(w_0)``); see Algorithm 1 of Khaled & Jin 2023.
-        """
-        n = self.total_nodes
-        set_params(self.model, self._w_ref)
-        g_ref = zeros_like_params(self.model)
-        grad_f1 = compute_full_gradient(
-            self.model, self.server_grad_loader, self.loss_fn, self.device,
+    @classmethod
+    def from_spec(cls, spec: RunSpec) -> SVRS:
+        if spec.prox is None:
+            raise ValueError("svrs requires a prox-solver configuration")
+        if spec.theta is None:
+            raise ValueError("svrs requires 'theta'")
+        return cls(
+            theta=spec.theta,
+            batch_size_clients=spec.batch_size_clients,
+            prox_solver=build_prox_solver(spec.prox),
         )
-        for loader in self.client_loaders:
-            g = compute_full_gradient(
-                self.model, loader, self.loss_fn, self.device,
-            )
+
+    def bind(self, ctx: AlgorithmCtx) -> None:
+        self._ctx = ctx
+        self._w_ref = get_params(ctx.model)
+        self._g_ref = zeros_like_params(ctx.model)
+
+    def _refresh_anchor(self) -> None:
+        """g_ref = (1/n) sum_i grad(f_i - f1)(w_ref), exact full gradients."""
+        ctx = self._ctx
+        assert ctx is not None
+        n = ctx.total_nodes
+        set_params(ctx.model, self._w_ref)
+        g_ref = zeros_like_params(ctx.model)
+        grad_f1 = compute_full_gradient(
+            ctx.model, ctx.server_grad_loader, ctx.loss_fn, ctx.device
+        )
+        for loader in ctx.client_loaders:
+            g = compute_full_gradient(ctx.model, loader, ctx.loss_fn, ctx.device)
             for tg, gi, g1 in zip(g_ref, g, grad_f1):
                 tg.add_(gi - g1, alpha=1.0 / n)
         self._g_ref = g_ref
 
     def _sample_epoch_length(self) -> int:
-        """Draw T ∼ Geom(p = 1/num_clients), shifted so that T ≥ 1.
-
-        Matches Algorithm 1 of Lin et al. 2023 (SVRS¹ᵉᵖ): the inner-loop
-        horizon between anchor refreshes is a geometric random variable
-        with ``E[T] = 1/p = num_clients``.  This replaces the deterministic
-        permutation-based pass we used before (which always covered every
-        client exactly once per epoch).
-
-        Using ``num_clients`` for ``p`` (rather than ``total_nodes``)
-        because in our setup the server is always queried inside the prox
-        and is never one of the i_t-sampled components.
-        """
-        p = torch.tensor(1.0 / max(self.num_clients, 1))
+        """T ~ Geom(1/num_clients), shifted so T >= 1 (E[T] = num_clients)."""
+        ctx = self._ctx
+        assert ctx is not None
+        p = torch.tensor(1.0 / max(ctx.num_clients, 1))
         raw = torch.distributions.Geometric(probs=p).sample().item()
         return int(raw) + 1
 
     def _sample_one_client(self) -> int:
-        """``i_t ∼ Unif([num_clients])`` — a single uniform draw."""
-        return int(torch.randint(low=0, high=self.num_clients, size=(1,)).item())
+        ctx = self._ctx
+        assert ctx is not None
+        return int(torch.randint(low=0, high=ctx.num_clients, size=(1,)).item())
 
     def run_epoch(self, epoch: int) -> dict[str, float]:
-        assert self.model is not None
+        ctx = self._ctx
+        assert ctx is not None, "call bind(ctx) before run_epoch"
+        model = ctx.model
 
-        # Refresh anchor at the start of every outer round.
-        self._w_ref = get_params(self.model)
+        self._w_ref = get_params(model)
         self._refresh_anchor()
 
-        # Random epoch length per the original SVRS paper.
         T = self._sample_epoch_length()
-        logger.debug(
-            "SVRS epoch %d: sampled T=%d (E[T]=%d)", epoch, T, self.num_clients,
-        )
-
-        for t in range(1, T + 1):
+        v_norm_last = 0.0
+        for _ in range(T):
             cid = self._sample_one_client()
-            w_curr = get_params(self.model)
+            w_curr = get_params(model)
 
-            # Pre-sample one minibatch per node, reused at w_curr and w_ref.
-            srv_xy = next(iter(self.server_grad_loader))
-            cli_xy = next(iter(self.client_loaders[cid]))
+            # Same minibatch per node, reused at w_t and w_ref (telescope).
+            srv_xy = next(iter(ctx.server_grad_loader))
+            cli_xy = next(iter(ctx.client_loaders[cid]))
 
-            # ── ∇(f_i − f₁)(w_t) on shared minibatch ─────────────────
             grad_f1_curr = compute_batch_gradient(
-                self.model, self.server_grad_loader, self.loss_fn, self.device,
-                xy=srv_xy,
+                model, ctx.server_grad_loader, ctx.loss_fn, ctx.device, xy=srv_xy
             )
             g_curr = compute_batch_gradient(
-                self.model, self.client_loaders[cid],
-                self.loss_fn, self.device, xy=cli_xy,
+                model, ctx.client_loaders[cid], ctx.loss_fn, ctx.device, xy=cli_xy
             )
             diff_curr = [gc - g1 for gc, g1 in zip(g_curr, grad_f1_curr)]
 
-            # ── ∇(f_i − f₁)(w_ref) on the SAME minibatch ─────────────
-            set_params(self.model, self._w_ref)
+            set_params(model, self._w_ref)
             grad_f1_ref = compute_batch_gradient(
-                self.model, self.server_grad_loader, self.loss_fn, self.device,
-                xy=srv_xy,
+                model, ctx.server_grad_loader, ctx.loss_fn, ctx.device, xy=srv_xy
             )
             g_ref_b = compute_batch_gradient(
-                self.model, self.client_loaders[cid],
-                self.loss_fn, self.device, xy=cli_xy,
+                model, ctx.client_loaders[cid], ctx.loss_fn, ctx.device, xy=cli_xy
             )
             diff_ref = [gr - g1 for gr, g1 in zip(g_ref_b, grad_f1_ref)]
 
-            # v_t = g_ref + (∇(f_i − f₁)(w_t) − ∇(f_i − f₁)(w_ref))
-            # — single client, no /B division.
+            # v_t = g_ref + (diff_curr - diff_ref); single client, no /B.
             v = clone_params(self._g_ref)
             for vi, dc, dr in zip(v, diff_curr, diff_ref):
                 vi.add_(dc - dr)
+            v_norm_last = compute_param_norm(v)
 
-            set_params(self.model, w_curr)
+            set_params(model, w_curr)
             self.prox_solver.step(
-                self.model, v, self.theta,
-                self.server_prox_loader, self.loss_fn, self.device,
-                eval_loader=self.server_grad_loader,
+                model, v, self.theta,
+                ctx.server_prox_loader, ctx.loss_fn, ctx.device,
+                eval_loader=ctx.server_grad_loader,
             )
 
-            logger.debug(
-                "SVRS epoch %d step %d/%d  cid=%d  ‖v‖=%.3e",
-                epoch, t, T, cid, compute_param_norm(v),
-            )
-
-        return {"epoch": float(epoch), "inner_steps": float(T)}
+        return {
+            "epoch": float(epoch),
+            "inner_steps": float(T),
+            "v_norm": v_norm_last,
+            "param_norm": compute_param_norm(get_params(model)),
+        }

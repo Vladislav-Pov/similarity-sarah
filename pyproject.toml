@@ -28,8 +28,15 @@ files = [
   "similarity_sarah/prox",
   "similarity_sarah/algorithms/base.py",
   "similarity_sarah/algorithms/nfg_ss.py",
+  "similarity_sarah/algorithms/svrs.py",
+  "similarity_sarah/algorithms/fedavg.py",
+  "similarity_sarah/data/loaders.py",
+  "similarity_sarah/models/__init__.py",
+  "similarity_sarah/runtime/metrics.py",
+  "similarity_sarah/runtime/loop.py",
   "similarity_sarah/registry.py",
   "similarity_sarah/spec.py",
+  "main.py",
 ]
 
 [tool.pytest.ini_options]
