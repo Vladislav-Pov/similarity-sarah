@@ -29,6 +29,8 @@ Two load-bearing details, both deliberately preserved bit-for-bit:
 
 from __future__ import annotations
 
+import logging
+
 import torch.nn as nn
 
 from similarity_sarah.algorithms.base import ALGORITHMS, Algorithm, AlgorithmCtx
@@ -48,6 +50,8 @@ from similarity_sarah.core.params import (
 from similarity_sarah.prox import ProxSolver, build_prox_solver
 from similarity_sarah.runtime.scheduler import sample_client_batches
 from similarity_sarah.spec import RunSpec
+
+logger = logging.getLogger(__name__)
 
 
 def _avg(xs: list[float]) -> float:
@@ -133,6 +137,11 @@ class NFGSS(Algorithm):
         # w_1 = prox_{theta f1}(w_0 - theta v_0).
         w_prev = get_params(model)
         diag0 = self._prox(v)
+        logger.info(
+            "epoch %d step 0/%d (init): prox_grad %.2f→%.2f  ‖v‖=%.1e",
+            epoch, K, diag0["prox_grad_norm_first"], diag0["prox_grad_norm_last"],
+            compute_param_norm(v),
+        )
 
         prox_first = [diag0["prox_grad_norm_first"]]
         prox_last = [diag0["prox_grad_norm_last"]]
@@ -185,6 +194,11 @@ class NFGSS(Algorithm):
             prox_obj.append(diag["prox_obj_decrease"])
             prox_clip.append(diag.get("prox_clip_frac", 0.0))
             step_norms.append(diff_param_norm(get_params(model), w_curr))
+            logger.info(
+                "epoch %d step %d/%d: prox_grad %.2f→%.2f  ‖v‖=%.1e",
+                epoch, t, K, diag["prox_grad_norm_first"], diag["prox_grad_norm_last"],
+                compute_param_norm(v),
+            )
 
         # Hand off to next epoch — no full gradient.
         self.v_epoch = tilde_v
