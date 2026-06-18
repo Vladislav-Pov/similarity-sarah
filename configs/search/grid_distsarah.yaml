@@ -1,4 +1,5 @@
-# Grid search for distributed_sarah only.  Single knob: lr (log-spaced).
+# Grid search for distributed_sarah only.  Two knobs: lr (log-spaced) and
+# weight_decay (0 plus a log-spaced sweep).  8 × 4 = 32 configs.
 enabled: true
 method: grid
 max_epochs: 50
@@ -10,4 +11,5 @@ shared:
   batch_size_clients: [1]
 
 distributed_sarah:
-  lr: [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]
+  lr: [0.0001, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0]
+  weight_decay: [0.0, 1.0e-5, 1.0e-4, 1.0e-3]

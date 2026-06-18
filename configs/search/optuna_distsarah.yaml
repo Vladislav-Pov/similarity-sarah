@@ -1,6 +1,5 @@
-# Optuna search for distributed_sarah only.  Just a log-uniform sweep
-# over lr — TPE on a single dimension reduces to random search but still
-# benefits from the median pruner.
+# Optuna search for distributed_sarah only.  Log-uniform sweep over the two
+# knobs — lr (step size) and weight_decay — with TPE + median pruner.
 enabled: true
 method: optuna
 max_epochs: 50
@@ -30,6 +29,11 @@ shared:
 distributed_sarah:
   lr:
     type: float
-    low: 1.0e-3
+    low: 1.0e-4
     high: 1.0
+    log: true
+  weight_decay:
+    type: float
+    low: 1.0e-6
+    high: 1.0e-3
     log: true

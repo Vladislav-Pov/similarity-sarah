@@ -14,5 +14,7 @@ These modules are constructed manually (no registry / `from_spec`).
 
 With all flags off, `NfgSSAblations` is bit-identical to `NFGSS`.
 
-`distributed_sarah` was removed (not a comparison baseline; recoverable from
-baseline commit `4ca4873` if needed).
+`distributed_sarah` is now a first-class baseline (NoFullGrad SARAH, no `f1`
+prox) — see `similarity_sarah/algorithms/distributed_sarah.py`. The earlier
+full-gradient-anchor variant (full participation each epoch) is still
+recoverable from baseline commit `4ca4873` if needed.

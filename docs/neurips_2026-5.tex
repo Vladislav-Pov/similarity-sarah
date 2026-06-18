@@ -1,0 +1,1440 @@
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2026
+
+% The authors should use one of these tracks.
+% Before accepting by the NeurIPS conference, select one of the options below.
+% 0. "default" for submission
+\usepackage{neurips_2026}
+% the "default" option is equal to the "main" option, which is used for the Main Track with double-blind reviewing.
+% 1. "main" option is used for the Main Track
+%  \usepackage[main]{neurips_2026}
+% 2. "position" option is used for the Position Paper Track
+%  \usepackage[position]{neurips_2026}
+% 3. "eandd" option is used for the Evaluations & Datasets Track
+ % \usepackage[eandd]{neurips_2026}
+ % if you need to opt-in for a single-blind submission in the E&D track:
+ %\usepackage[eandd, nonanonymous]{neurips_2026}
+% 4. "creativeai" option is used for the Creative AI Track
+%  \usepackage[creativeai]{neurips_2026}
+% 5. "sglblindworkshop" option is used for the Workshop with single-blind reviewing
+ % \usepackage[sglblindworkshop]{neurips_2026}
+% 6. "dblblindworkshop" option is used for the Workshop with double-blind reviewing
+%  \usepackage[dblblindworkshop]{neurips_2026}
+
+% After being accepted, the authors should add "final" behind the track to compile a camera-ready version.
+% 1. Main Track
+ % \usepackage[main, final]{neurips_2026}
+% 2. Position Paper Track
+%  \usepackage[position, final]{neurips_2026}
+% 3. Evaluations & Datasets Track
+ % \usepackage[eandd, final]{neurips_2026}
+% 4. Creative AI Track
+%  \usepackage[creativeai, final]{neurips_2026}
+% 5. Workshop with single-blind reviewing
+%  \usepackage[sglblindworkshop, final]{neurips_2026}
+% 6. Workshop with double-blind reviewing
+%  \usepackage[dblblindworkshop, final]{neurips_2026}
+% Note. For the workshop paper template, both \title{} and \workshoptitle{} are required, with the former indicating the paper title shown in the title and the latter indicating the workshop title displayed in the footnote.
+% For workshops (5., 6.), the authors should add the name of the workshop, "\workshoptitle" command is used to set the workshop title.
+% \workshoptitle{WORKSHOP TITLE}
+
+% "preprint" option is used for arXiv or other preprint submissions
+ % \usepackage[preprint]{neurips_2026}
+
+% to avoid loading the natbib package, add option nonatbib:
+%    \usepackage[nonatbib]{neurips_2026}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+
+\usepackage{lipsum}		% Can be removed after putting your text content
+\usepackage{graphicx}
+\usepackage{natbib}
+\usepackage{wrapfig}
+\usepackage{doi}
+\usepackage{mathtools}
+\usepackage{xspace}	
+\usepackage{amsthm}
+\usepackage{setspace}
+\usepackage{comment}
+\usepackage{amsmath,amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{tablefootnote}
+\usepackage{array, longtable}
+\usepackage{bbm}
+\usepackage[table]{xcolor}
+\usepackage{epigraph}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{subcaption}
+\usepackage{threeparttable}
+\usepackage{wasysym}
+
+\usepackage{makecell}
+
+\usepackage{nicefrac}
+
+\floatstyle{ruled}
+\restylefloat{algorithm}
+
+\DeclareMathOperator{\prox}{prox}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}{Corollary}
+\newtheorem{lemma}{Lemma}
+\newtheorem{assumption}{Assumption}
+\newtheorem{remark}{Remark}
+\newtheorem{definition}{Definition}
+\newtheorem{replemma}{Lemma}
+
+
+% Note. For the workshop paper template, both \title{} and \workshoptitle{} are required, with the former indicating the paper title shown in the title and the latter indicating the workshop title displayed in the footnote. 
+\title{Non-Convex Distributed Optimization without Full Client Participation under Second-Order Similarity}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{%
+  David S.~Hippocampus\thanks{Use footnote for providing further information
+    about author (webpage, alternative address)---\emph{not} for acknowledging
+    funding agencies.} \\
+  Department of Computer Science\\
+  Cranberry-Lemon University\\
+  Pittsburgh, PA 15213 \\
+  \texttt{hippo@cs.cranberry-lemon.edu} \\
+  % examples of more authors
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \AND
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+}
+
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+We study non-convex distributed optimization under the second-order data similarity assumption. Existing homogeneity-aware methods achieve optimal communication complexity in terms of client–server vector exchanges. However, they rely on periodic rounds of full client participation. This requirement constitutes a significant drawback, increasing the training time. In contrast, algorithms that avoid full participation fail to exploit the homogeneity of local datasets to accelerate convergence. In our work, we propose \texttt{NFG-SS}, a novel distributed algorithm that leverages second-order similarity while completely avoiding full client participation. Our method is motivated by a principled design choice and supported by a rigorous convergence analysis. Notably, \texttt{NFG-SS} does not require convexity of the objective, which is uncommon for this class of algorithms. Empirical results demonstrate the superiority of our approach over both homogeneity-aware methods and schemes without full participation. Overall, our work bridges the gap between these two key paradigms in distributed learning.
+\end{abstract}
+
+\section{Introduction}
+The rapid growth of modern machine learning models and datasets has made large-scale optimization a central computational bottleneck \citep{bottou2018optimization}. Distributed learning addresses this challenge by allowing multiple nodes to perform local computations while a central server coordinates model updates \citep{verbraeken2020survey}. In the standard client-server setting, the server maintains the global model, whereas clients compute local update directions using their private datasets. Formally, we consider the finite-sum optimization problem
+\begin{equation}
+    \min_{x \in \mathbb{R}^d} \Bigl[f(x) = \dfrac{1}{n} \sum_{i=1}^n f_i (x)\Bigr]
+    \quad \text{with} \quad f_i (x) = \dfrac{1}{m_i} \sum_{j=1}^{m_i} \ell(g(x, a_j^i), b_j^i),
+\end{equation}
+where $n$ is the number of nodes, $m_i$ is the size of the local dataset at node $i$, $g(x,a_j^i)$ denotes the model prediction with trainable parameters $x$, and $(a_j^i,b_j^i)$ is the $j$-th data point stored at node $i$. For algorithmic purposes, we designate $f_1$ as the server-side objective and treat $f_2,\ldots,f_n$ as client-side objectives. This convention is used throughout the paper because our method performs proximal updates with respect to $f_1$.
+
+
+In distributed learning, transmitting model updates is typically far more expensive than 
+performing local computation on each device 
+\citep{konevcny2016federated, kairouz2021advances}. Therefore, the main 
+challenge is to design methods that achieve superior performance while 
+keeping the communication cost low.  One prominent direction  is the exploitation of local steps. In this paradigm,  each client performs 
+multiple local updates between communication rounds. \citep{mcmahan2017communication, khaled2020tighter, 
+woodworth2020minibatch, li2020federated}. 
+
+
+% However, decrease the frequency of aggregations is only one way of efficient optimization. Another way is that we need to transmit as few vectors as possible. In modern large-scale systems with a large 
+%  number of workers, the server cannot aggregate all updates at the same time. Even one full synchronization requires $\mathcal{O}(n)$ 
+% vector transmissions and creates a system-level bottleneck.
+%  This drawback motivates partial participation, where only subset of clients operates with server at a time. This aspect make them suitable for large-scale systems with massive number of workers.
+
+
+% However, the theoretical guarantees of \texttt{FedAvg} and \texttt{Local SGD} are weak: convergence rates contains a non-vanishing bias. The main reason is that client's local updates diverge from global update direction, and the update magnitude is controlled by the difference of local objectives. 
+
+
+
+% тут может быть нужный отрывок 
+% However, these methods still 
+% rely on full periodic synchronization, when all clients simultaneously send 
+% model updates to the server. In modern large-scale systems with a large 
+% number of workers, the server cannot aggregate all updates at the same time, 
+% which makes each communication round slow. This naturally motivates partial 
+% participation, where only a subset of clients participates in each round 
+% \citep{mcmahan2017communication}.
+
+
+In a distributed setting, the data on different clients comes
+from a common underlying distribution, since a single training dataset is split across workers \cite{zinkevich2010parallelized, dekel2012optimal}. In this setup, 
+the local objectives of clients are not identical. The degree of homogeneity 
+between them is the key factor that determines the sustainability of local 
+steps \cite{karimireddy2020scaffold, woodworth2020minibatch}. When local 
+objectives are more similar, the local loss landscape of each client more 
+faithfully reflects the global landscape, and local updates push iterates 
+in directions consistent with the global function. Following this intuition, recent 
+studies formalize homogeneity through the second-order similarity assumption 
+\citep{kovalev2022optimal, lin2023stochastic, karagulyan2024spamstochasticproximalpoint}, 
+also known as the $\delta$-relatedness assumption or bounded Hessian dissimilarity. Exploiting this assumption helps distributed methods accelerate convergence, since in practice $\delta \ll L$ \cite{arjevani2015communication, kovalev2022optimal}.
+
+
+\begin{definition}[Second-order similarity]
+\label{second-order-similarity}
+We say that the local objectives $\{f_i\}_{i=1}^n$ satisfy the $\delta$-second-order similarity condition if for all $x \in \mathbb{R}^d$ and all $i \in [n]$
+\begin{equation}
+    \|\nabla^2 f_i(x) - \nabla^2 f(x)\| \le \delta.
+\end{equation}
+\end{definition}
+
+In particular, if local objectives are constructed from i.i.d.\ samples, learning theory implies that $\delta$ decreases as $\mathcal{O}\left(\nicefrac{1}{\sqrt m}\right)$, where $m$ is the local dataset size \citep{hendrikx2020statistically}. When $\delta$ is small, each client's information becomes more relevant for longer periods of time, meaning that every worker can do more local steps. Remarkably, algorithms such as \texttt{FedAvg} and \texttt{FedProx} do not exploit this regime and their convergence rate does not improve as the homogeneity between clients grows, so the benefits of similarity remain unused. 
+
+Early communication-efficient methods aimed to minimize number of communication rounds \citep{mcmahan2017communication, stich2018local, kovalev2022optimal}. This metric is appropriate when devices and communication channels are considered to be equivalent. However, it is not the case of real-world systems. The server cannot aggregate updates from all clients simultaneously, and even a single full synchronization round transmits $\mathcal{O}(n)$ vectors. Therefore, one should also consider the total amount of transmitted vectors, which counts cost per round and their number. This naturally motivates partial participation, where only a subset of clients operates with server at a time. \cite{mcmahan2017communication}. Under this measure, existing 
+distributed methods with theoretical guarantees for local steps 
+still require full aggregation across all clients per round 
+\citep{stich2018local, khaled2020tighter}, which alone incurs 
+$\mathcal{O}(n)$ transmitted vectors per round. The same limitation 
+appears in similarity-based methods, where periodic full-gradient 
+refreshes implicitly require synchronized participation of all clients \citep{kovalev2022optimal, lin2023stochastic}.
+
+% At the same time, existing methods that exploit similarity to accelerate convergence rely on full-gradient computation, or equivalently full synchronized participation of all clients per round \cite{kovalev2022optimal, lin2023stochastic, karagulyan2024spamstochasticproximalpoint}. 
+
+On the other hand, algorithms that eliminate full gradient calculation are developed for centralized problems, and do not consider local updates \cite{li2021zerosarah, medyakov2025variance}. If one transfers these methods to the distributed setting, where each gradient evaluation $\nabla f_i$ corresponds to communication with a client, the convergence rate will depend on smoothness constant $L$, rather than the $\delta$. Thus, making them insensitive to data homogeneity across clients.  This leaves open the question of whether one 
+can exploit second-order similarity in distributed non-convex optimization and simultaneously avoid explicit full-gradient computation with 
+theoretical guarantees.
+
+
+\paragraph{Our Contribution.} \label{contribution}
+We design a distributed method with local steps. Unlike existing similarity-based distributed methods, \textbf{our approach never computes or aggregates the full gradient at any step}. Second-order similarity is crucial in this setting, since it ensures that information obtained from sampled clients remains relevant to the global objective. To the best of our knowledge, this combination of complete no-full-gradient computation paradigm and second-order similarity is not covered by existing works.
+
+\section{Related Work} 
+\textbf{Hessian similarity in distributed optimization.} The similarity 
+assumption has been developed in distributed optimization starting from 
+\cite{shamir2014communication}, who proposed the communication-efficient 
+Newton-type method \texttt{DANE}. The authors exploited the fact that local 
+objectives are mutually aligned across workers. However, their analysis was 
+limited to quadratic problems. This direction was further developed by 
+accelerated versions of Newton-type methods, including \texttt{AIDE} 
+\cite{reddi2016aide}, \texttt{DISCO} \cite{pmlr-v37-zhangb15}, and 
+\texttt{GIANT} \cite{wang2018giant}, which improved robustness and 
+acceleration of approximate Newton-type updates. More recently, similarity 
+became an explicit structural assumption, enabling reduced communication 
+\cite{tian2022acceleration}. The first line of work in this direction 
+focused on the number of \textit{communication rounds}: \texttt{SONATA} 
+\cite{sun2022distributed} and its accelerated version 
+\cite{tian2022acceleration} were analyzed in the full-participation setting. 
+\cite{kovalev2022optimal} proposed \texttt{Accelerated Extragradient}, whose complexity bound $\mathcal{O}\bigl(\sqrt{\delta/\mu} \, \log(1/ \varepsilon \bigr)$ 
+on the number of rounds matches the lower bound of 
+\cite{arjevani2015communication}. However, since each round in the 
+full-participation setting requires all $n-1$ clients to transmit their 
+gradients to the server, the number of \textit{exchanged vectors} grows as 
+$\mathcal{O}\bigl(n\sqrt{\delta/\mu} \, \log(1/ \varepsilon\bigr)$. More recent works 
+measure complexity in terms of the total number of exchanged vectors and 
+reduce it through client sampling, where only a small subset of clients 
+communicates per round. For example, \cite{khaled2022faster} proposed 
+\texttt{SVRP} and \texttt{Catalyzed SVRP}, combining stochastic proximal 
+point evaluations with variance reduction. \texttt{SVRP} attains 
+$\mathcal{O}\bigl((n + \delta^{2}/\mu^{2})\log(1/\varepsilon)\bigr)$ 
+communication complexity, and \texttt{Catalyzed SVRP} improves this to 
+$\mathcal{O}\bigl((n + n^{3/4}\sqrt{\delta/\mu})\log(1/\varepsilon)\log(L/\mu)\bigr)$ 
+via the Catalyst acceleration framework \cite{lin2015universal}. However, 
+both algorithms require $\mu$-strong convexity of each $f_i$ -- a stronger assumption than necessary for acceleration. In addition, 
+\texttt{Catalyzed SVRP} pays an extra $\log(L/\mu)$ factor in complexity 
+due to the Catalyst framework.
+
+% For minimizing sum-of-nonconvex functions, \cite{allen2018katyusha} shows that direct 
+% momentum-based acceleration applies when $f$ is $\mu$-strongly convex and 
+% each $f_i$ is $L$-smooth and possibly non-convex. 
+
+
+Later, the authors of \cite{lin2023stochastic} introduced \texttt{SVRS}. Taking into account 
+the complexity gap in \texttt{Catalyzed SVRP}, they applied the \texttt{KatyushaX} 
+framework to obtain an accelerated version named \texttt{AccSVRS}. The 
+algorithm replaces $\nabla f(x_t)$ by the client-sampled estimate 
+$\nabla f_{i_t}(x_t) - g_t$, where $g_t = \nabla f_{i_t}(w_0) - \nabla f(w_0)$ 
+is a variance-reduction correction term computed at a reference point $w_0$.
+\texttt{AccSVRS} achieves an $\mathcal{O}\bigl((n + n^{3/4}\sqrt{\delta/\mu})\log(1/\varepsilon)\bigr)$ 
+communication bound, matching the corresponding lower bound, requiring 
+strong convexity only of the average $f$, and removing the $\log(L/\mu)$ 
+factor present in \texttt{Catalyzed SVRP}. Nevertheless, the convergence analysis still relies on $\mu$ strong convexity, and periodic calculation of full gradient $\nabla f$ i.e., full client participation at the start of each epoch.  
+% \[
+%     x_{t+1} \approx \arg\min_{x} \Bigl\{
+%     \langle \nabla f_{i_t}(x_t) - \nabla f_1(x_t) - g_t,\, x - x_t\rangle 
+%     + \tfrac{1}{2\theta}\|x - x_t\|^2 + f_1(x)
+%     \Bigr\}.
+% \]
+
+\textbf{No full gradient methods.} 
+A classic way to avoid computing the full gradient in finite-sum optimization 
+is to aggregate past gradient information across components. The earliest 
+methods in this line are incremental aggregated gradient methods: \texttt{IAG}, 
+\texttt{DIAG}, \texttt{PIAG} \cite{gurbuzbalaban2017convergence, 
+mokhtari2018surpassing, vanli2018global}, which cycle deterministically through 
+components. Building on this, \texttt{SAG} \cite{roux2012stochastic} and 
+\texttt{SAGA} \cite{defazio2014saga} introduced randomized component selection, 
+with \texttt{SAGA} correcting the gradient bias present in \texttt{SAG}. 
+However, all these algorithms maintain a table of $n$ past gradients and 
+therefore require $\mathcal{O}(nd)$ memory, which is prohibitive in large-scale 
+or distributed settings; in addition, the deterministic-cycling variants 
+(\texttt{IAG, DIAG, PIAG}) produce biased estimators and were originally 
+analyzed only under strong convexity.
+
+Another line of work uses recursive estimators to achieve  $\mathcal{O}(d)$ memory. The classical methods, including \texttt{SARAH} 
+\cite{nguyen2017sarah} and \texttt{SPIDER} \cite{fang2018spider}, and their variants - periodically recompute the full gradient $\nabla f$ at the start of each epoch as an anchor that resets the variance accumulated over the previous epoch. 
+
+More recently, a growing body of 
+work has emerged that uses $\mathcal{O}(d)$ memory while also seeking to 
+avoid full-gradient computations. \texttt{STORM} 
+\cite{cutkosky2020momentumbasedvariancereductionnonconvex} avoids the anchor 
+via a momentum-based recursive estimator that never requires a full gradient 
+or mega-batch, at the cost of requiring knowledge of the stochastic variance. 
+\texttt{PAGE} \cite{li2021page} replaces the fixed outer loop by probabilistic 
+switching between a small adjustment and a rare large-batch refresh, achieving 
+the optimal $\mathcal{O}(n + n^{1/2}/\varepsilon^2)$ complexity but still 
+relying on occasional large-batch computations. 
+\texttt{ZeroSARAH} \cite{li2021zerosarah} was proposed as the first 
+variance-reduced method for non-convex finite-sum optimization with zero 
+full-gradient computation, replacing the anchor with an auxiliary momentum 
+sequence. More recently, \cite{medyakov2025variance} generalized this 
+viewpoint and argued that full-gradient refreshes are not intrinsic to 
+variance reduction, proposing no-full-gradient variants of 
+both \texttt{SVRG} and \texttt{SARAH}. They keep the 
+classical update rule of these methods intact and 
+replace the full-gradient anchor with different  
+approximation.  All of the above works, however, 
+address \textit{centralized} finite-sum optimization and do not exploit 
+second-order similarity between local objectives.
+
+\textbf{No full gradient methods under similarity.} 
+Several recent works explore the interplay between variance reduction without 
+full-gradient computation and hessian similarity structure. In the strongly convex regime, 
+\cite{beznosikov2024random} showed that  \texttt{SARAH} can be modified to remove full-gradient refreshes via random reshuffling and within-epoch gradient aggregation. Since each 
+reshuffling pass visits every component exactly once, the accumulated 
+stochastic gradients implicitly serve as a full-gradient estimate. Under 
+$\delta$-Hessian similarity and $\mu$-strong convexity of the average 
+objective, their method achieves communication complexity 
+$\mathcal{O}\bigl((nL/\mu + n^{2}\delta/\mu)\log(1/\varepsilon)\bigr)$. 
+This analysis is restricted to 
+the centralized setting and to strongly convex objectives, requires each 
+$f_i$ to be convex and $L$-smooth. 
+
+Moving to the non-convex setting, SILVER \cite{oko2024silver} builds a 
+single-loop estimator in the SARAH type and extends it to federated 
+learning through local updates, attaining 
+$\mathcal{O}\bigl(n + \delta n^{1/2} /\varepsilon^{2}\bigr)$ communicated 
+gradients under Hessian heterogeneity $\delta$, with a matching lower bound.   
+The server must store a per-client state vector resulting in 
+$\mathcal{O}(nd)$ memory, and the federated algorithm is obtained 
+by composing a centralized method with local updates rather than 
+being designed as a distributed algorithm from the start. 
+\texttt{SPAM} \cite{karagulyan2024spamstochasticproximalpoint} takes a 
+different route: it pairs \texttt{STORM}-type momentum variance reduction on 
+the server with stochastic proximal point evaluations on the clients, also 
+under second-order similarity. It avoids full-gradient computation entirely 
+and attains communication complexity 
+$\mathcal{O}\bigl((\delta  + \sigma^{2})/\varepsilon^{2} + 
+\delta \sigma / \varepsilon^{3}\bigr)$, where $\sigma^2$ bounds the stochastic gradient variance. However, this rate 
+corresponds to the stochastic regime and does not exploit finite-sum structure 
+as effectively as recursive methods.
+
+\section{Setup} \label{setup}
+
+\subsection{Notation and assumptions}
+
+Before presenting theoretical results, we present a list of assumptions.
+
+% We use $\|\cdot\|$ for the Euclidean norm and $\mathbb{E}[\cdot]$ for expectation. The proximal operator of a function $f$ at step size $\theta > 0$ is defined as $\prox_{\theta f}(x) := \arg\min_{y \in \mathbb{R}^d} \Bigl\{
+%     f(y) + \tfrac{1}{2\theta}\|y - x\|^2
+%     \Bigr\}.$
+
+% For non-convex composite objectives $f = (f - f_1) + f_1$ with proximal step on $f_1$, the appropriate stationarity measure is \emph{gradient mapping} \cite{nesterov2013gradient, ghadimi2016accelerated, pham2020proxsarah} 
+% \begin{equation}
+%     G_\theta(w) = \frac{1}{\theta}\Big(w - \prox_{\theta f_1} \left(w - \theta \, \nabla(f - f_1)(w) \right)\Big)
+% \end{equation} 
+
+% A point $w \in \mathbb{R}^d$ is called an $\varepsilon$ stationary point if $\mathbb{E}\|G_\theta(w)\|^2 \leq \varepsilon^2$. 
+
+\begin{assumption}[Lower-boundedness]
+\label{ass:lower}
+The function $f: \mathbb{R}^d \rightarrow \mathbb{R}$ attains its minimum (may be not unique), i.e. there exists such $x^*$ that  
+    \[ f(x^*) = \inf_{x \in \mathbb{R}^d} f(x) \, > - \infty \]
+\end{assumption}
+
+Neural networks tend to have a complex loss landscape \citep{cybenko1989approximation, nguyen2018optimization}. Since we are motivated by real-world scenarios, we provide convergence results in the non-convex case. 
+
+\begin{assumption}[bounded hessian dissimilarity]
+\label{ass:similarity}
+    Local objectives $\{f_i\}_{i=1}^n$ satisfy the $\delta$-second-order similarity definition \ref{second-order-similarity}.
+\end{assumption}
+
+Assumption \ref{ass:similarity} can be considered as a generalization of smoothness. Indeed, if all $f_i$ are $L$-smooth, then by triangle inequality $\|\nabla^2 f_i(x) - \nabla^2 f(x)\| \leq 2L$, so $L$ smoothness implies $2 L$ similarity of $\{f_i\}_{i=1}^n$. The opposite does not hold in general. As discussed above, if local datasets are sampled i.i.d from a common distribution, $\delta = \mathcal{O}(L/\sqrt{m})$, 
+where $m$ is the local dataset size \cite{hendrikx2020statistically}. It follows that $\delta \ll L$, because in modern machine learning, datasets contain large number of samples \cite{kaplan2020scaling}. 
+
+\textbf{Notation.} Throughout the algorithm and its analysis
+we fix an integer batch size $b \in \{1, 2, \ldots, n\}$.
+At each epoch, the server partitions the index set
+$[n] = \{1, \ldots, n\}$ into $\lceil n/b \rceil$ disjoint batches
+of size~$b$.
+
+\section{Algorithm} \label{algorithm}
+
+Our setting has only one structural assumption: $\delta$ second order similarity \ref{ass:similarity}, and we do not assume the $L$ smoothness of $f$. This means that classical descent inequalities are not applicable in this case. To circumvent this, we adopt the proximal decomposition of $f$, introduced by similarity-based methods \texttt{Accelerated Extragradient}, \texttt{SVRP}, \texttt{SVRS}/\texttt{AccSVRS}, as follows: 
+\[
+     f(w) = (f - f_1)(w) + f_1(w)
+\]
+
+This suggests a proximal step update 
+\begin{equation*}
+\label{eq:ideal_update}
+    w_{t+1} = \prox_{\theta f_1}\bigl(w_t - \theta \nabla(f - f_1)(w_t)\bigr)
+    = \arg\min_{w \in \mathbb{R}^d} \Bigl\{\langle \nabla(f - f_1)(w_t), w \rangle 
+    + \tfrac{1}{2\theta}\|w - w_t\|^2 + f_1(w)\Bigr\}.
+\end{equation*}
+
+The update is identical to the proximal step in \texttt{Accelerated Extragradient}. However, computing $\nabla(f-f_1)$ requires gradients from all $n-1$ clients per round. We aim to replace $\nabla (f - f_1)$ by an estimator $v$. 
+
+\paragraph{From \texttt{SARAH} to a no full gradient estimator}
+A possible approach is the \texttt{SARAH} recursion \cite{nguyen2017sarah}, which builds a low-variance recursive estimator of the form: 
+
+\begin{equation}
+\label{eq:sarah_recursion}
+    v_t = v_{t-1} + \Bigl(
+    \nabla(f_i - f_1)(w_t) - \nabla(f_i - f_1)(w_{t-1})\Bigr).
+\end{equation}
+
+But at the beginning of the epoch, the initialization $v_0 = \nabla (f-f_1)(w_0)$ requires the full gradient. Without it, $\|v_t - \nabla(f - f_1)(w_t)\|^2$ does not start from zero. The question becomes how to initialize $v_0$ in the beginning of each epoch to control variance without full client participation. 
+
+We construct $v^{(s)}_0$, $v_0$ at epoch $s$ from gradients that have already evaluated during the previous epoch $s-1$, following the approach of \cite{beznosikov2024random} and \cite{medyakov2025variance} in the centralized setup. We adapt it to distributed setting, and apply it to $\nabla (f - f_1)$. In parallel with $v^{(s)}_t$, the server maintains $\tilde v_t^{(s)}$ and update it recursively within-epoch running mean of the client's gradients 
+
+\begin{equation}
+\label{eq:bridge_update}
+    \tilde v_{t+1}^{(s)} = \frac{t-1}{t}\,\tilde v_t^{(s)} 
+    + \frac{1}{tb}\sum_{i \in B_t^{(s)}} \nabla(f_i - f_1)(w_t^{(s)}).
+\end{equation}
+Unrolling the recursion gives the closed form.
+\begin{equation}
+\label{eq:bridge_main_update}
+    \tilde v_{n/b+1}^{(s)} = \frac{1}{n}\sum_{t=1}^{n/b}\sum_{i \in B_t^{(s)}}
+    \nabla(f_i - f_1)(w_t^{(s)}).
+\end{equation}
+
+
+Because batches $B^{(s)}_1, B^{(s)}_2, \ldots, B^{(s)}_{\lceil n/b \rceil}$ are disjoint, and together cover all $n$ clients, $\tilde v^{(s)}_{\lceil n/b \rceil + 1}$ averages exactly one gradient from each client. We then set $v_0^{(s+1)} := \tilde v_{\lceil n/b \rceil + 1}^{(s)}$. The next two lemmas formalize how $\tilde v$ controls the variance. 
+
+\begin{lemma}%[Variance bound at iteration $t$]
+\label{lem:deviation_gradient}
+The recursive estimator $v_t^{(s)}$ in \ref{eq:sarah_recursion} 
+satisfies
+\[ 
+    \|v_t^{(s)} - \nabla(f - f_1)(w_t^{(s)})\|^2 
+    \leq e\,\|v_0^{(s)} - \nabla(f - f_1)(w_0^{(s)})\|^2 
+    + \frac{18\,e\,n\,\delta^2}{b}\sum_{j=0}^{n/b - 1}
+    \|w_{j+1}^{(s)} - w_j^{(s)}\|^2.
+\]
+\end{lemma}
+
+\begin{lemma}% [Initial estimator variance bound]
+\label{lem:initial_deviation_gradient}
+The initial approximator $v_0^{(s)}$ variance bound is
+\[ 
+    e\,\|v_0^{(s)} - \nabla(f - f_1)(w_0^{(s)})\|^2 
+    \leq \frac{16\,e\,n\,\delta^2}{b}\sum_{j=0}^{n/b}
+    \|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2.
+\]
+\end{lemma}
+
+the initial variance of every epoch is bounded by the iterate movement of 
+the previous epoch, so that progress in one epoch pays for the 
+variance of the next.
+
+
+
+
+We now describe \texttt{NFG-SS} (NoFullGrad \texttt{SARAH} Similarity) , formally described in Algorithm~\ref{alg:nofullgrad_sarah}. It proceeds in epochs $s=0, 1, \ldots, S$. In the Line \ref{line:sample_batches}, at start of the epoch $s$, server samples disjoint mini-batches of clients of size b: $B^{(s)}_1, B^{(s)}_2, \ldots, B^{(s)}_{\lceil n/b \rceil}$, that together cover all $n$ workers. At iteration $t$, server sends model weights $w^{(s)}_t$, $w^{(s)}_{t-1}$ to workers in $B^{(s)}_t$. These workers compute gradients $\nabla f_i(w^{(s)}_t)$, $\nabla f_i(w^{(s)}_{t-1})$ and send them back to the server, which also computes $\nabla f_1(w^{(s)}_t)$, $\nabla f_1(w^{(s)}_{t-1})$. After that, the server updates two recursive 
+estimators $\tilde v_{t+1}^{(s)}$ and $v_t^{(s)}$ in Line \ref{line:calculating_v_tilde} and \ref{line:calculating_new_v} accordingly, and performs a 
+proximal step on its own local objective $f_1$ in line \ref{line:argmin-step}:
+\begin{equation}
+    w_{t+1}^{(s)} = \prox_{\theta f_1}\bigl(w_t^{(s)} - \theta v_t^{(s)}\bigr) 
+    = \arg\min_{w \in \mathbb{R}^d} \Bigl\{\langle v_t^{(s)}, w \rangle 
+    + \tfrac{1}{2\theta}\|w - w_t^{(s)}\|^2 + f_1(w)\Bigr\}.
+\end{equation}
+Crucially, this construction never requires 
+computing the full gradient $\nabla f$.
+
+
+\begin{algorithm}[t]
+\caption{\texttt{NFG-SS}}
+\label{alg:nofullgrad_sarah}
+\begin{algorithmic}[1]
+\State \textbf{Input:} Initial point $w_0^{(0)} \in \mathbb{R}^d$; initial gradients
+$\tilde v_1^{(0)} = 0^d$, $v_0^{(0)} = 0^d$
+\State \textbf{Parameter:} Stepsize $\theta > 0$, batch size $b$
+\For{epochs $s = 0,1,\dots,S$}
+    \State Sample batches $B_1^{(s)}, \dots, B_{\lceil n/b \rceil}^{(s)}$ \label{line:sample_batches}
+    \State $v_0^{(s)} = v^{(s)}$ 
+    \State $w_1^{(s)} = \prox_{\theta f_1}\!\left(w_0^{(s)} - \theta v_0^{(s)}\right)$
+    \For{$t = 1,2,\dots,\lceil n/b \rceil$}
+        \State \label{line:calculating_v_tilde}
+        \[
+        \tilde v_{t+1}^{(s)}
+        =
+        \frac{t-1}{t}\tilde v_t^{(s)}
+        +
+        \frac{1}{t\, b}\sum_{i \in B_t^{(s)}} \nabla (f_i - f_1)\!\left(w_t^{(s)}\right)
+        \]
+        \State 
+        \[
+        v_t^{(s)}
+        =
+        v_{t-1}^{(s)}
+        +
+        \frac{1}{b}\sum_{i \in B_t^{(s)}}
+        \Bigl(
+        \nabla (f_i - f_1)\!\left(w_t^{(s)}\right)
+        -
+        \nabla (f_i - f_1)\!\left(w_{t-1}^{(s)}\right)
+        \Bigr)
+        \] \label{line:calculating_new_v}
+        \State
+        \[
+        w_{t+1}^{(s)}
+        =
+        \arg\min_{w}
+        \left\{
+        \langle v_t^{(s)}, w \rangle
+        +
+        \frac{1}{2\theta}\|w - w_t^{(s)}\|^2
+        +
+        f_1(w)
+        \right\}
+        \] \label{line:argmin-step}
+        
+    \EndFor
+    \State $w_0^{(s+1)} = w_{\lceil n/b \rceil + 1}^{(s)}$
+    \State $\tilde v_1^{(s+1)} = 0^d$ \label{line:reinitialization_of_v}
+    \State $v^{(s+1)} = \tilde v_{\lceil n/b \rceil + 1}^{(s)}$
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+% \paragraph{Algorithmic design choices}
+% \texttt{NFG-SS} is based on two key design decisions. 
+
+% First, the servers make update on its own local objective $f_1$. We decompose $f$ to two objectives: $f - f_1$ and $f_1$. Such idea allows the server to perform each prox step locally, without communication, and this was investigated in similarity based methods such as \texttt{Accelerated Extragradient}, \texttt{SVRP}, \texttt{SVRS}/\texttt{AccSVRS}. 
+% In particular, 
+% the iterate of \texttt{Accelerated Extragradient} can be written as
+% \[
+%     x_{t+1} \approx \prox_{\theta f_1}\bigl(x_t - \theta \nabla(f - f_1)(x_t)\bigr),
+% \]
+% which has exactly the same form as our update step, with $\nabla(f - f_1)(x_t)$ 
+% playing the role of our estimator $v_t$.
+
+% Second, estimation of $\nabla (f - f_1)$ is based on \texttt{SARAH}-type recursive estimator $v_t$, rather than the exact gradient (as in \cite{kovalev2022optimal, sun2022distributed}) or an \texttt{SVRG}-style 
+% estimator with periodic full-gradient refreshes (as in 
+% \cite{khaled2022faster, lin2023stochastic}). To avoid the calculation of full-gradient anchor $v_0 = \nabla f(w_0)$ needed by standard \texttt{SARAH}-like methods, we maintain second parallel estimator $\tilde v_t^{(s)}$, updated as
+% \[
+%     \tilde v_{t+1}^{(s)} = \frac{t-1}{t}\,\tilde v_t^{(s)} 
+%     + \frac{1}{t \, b}\sum_{i \in B_t^{(s)}} \nabla(f_i - f_1)(w_t^{(s)}),
+% \]
+% which implements a running mean of gradients of 
+% $f - f_1$ across clients. By the end of an epoch, this 
+% accumulator yields an empirical-mean estimate of $\nabla(f - f_1)$ along 
+% the inner-loop trajectory at $\mathcal{O}(d)$ memory cost. This 
+% memory-efficient accumulator was introduced for centralized 
+% \texttt{Shuffled SARAH} by \cite{beznosikov2024random} and further developed by 
+% \cite{medyakov2025variance}; we extend it to the distributed setting 
+% and apply it to the difference $f - f_1$.
+
+Now we can present the final result of this section: convergence rate and
+communication complexity of \texttt{NFG-SS} method. The proof is deferred to Appendix \ref{app:proof_theorem}. 
+
+\begin{theorem}
+\label{thm:convergence}
+Suppose Assumptions \ref{ass:lower}
+and \ref{ass:similarity} hold, and define the gradient mapping \\
+$
+    G_\theta(w) = \frac{1}{\theta}\Big(w - \prox_{\theta f_1} \left(w - \theta \, \nabla(f - f_1)(w) \right)\Big)
+$.
+Let Algorithm~\ref{alg:nofullgrad_sarah} be run 
+with step size $\theta = \frac{cb}{\delta n}$ 
+, where 
+$c^* = \sqrt{\frac{-13+\sqrt{185}}{272\,e}}$.
+Then, to achieve
+\[
+\frac{1}{S(n/b+1)}\sum_{s=1}^{S}\sum_{t=0}^{n/b}
+\|G_\theta(w_t^{(s)})\|^2 \leq \varepsilon^2,
+\]
+Algorithm~\ref{alg:nofullgrad_sarah} requires at most
+\[
+S = \mathcal{O}\!\left(\frac{b\,\delta\,\Delta_1}
+{n\,\varepsilon^2}\right) 
++ \mathcal{O}\!\left(\frac{n\,\delta^2\,\Delta_2}
+{b\,\varepsilon^2}\right)
+\]
+epochs and
+\[
+N_{\text{oracle}} = S \cdot n 
+= \mathcal{O}\!\left(\frac{n\,\delta\,\Delta_1}{\varepsilon^2}\right) 
++ \mathcal{O}\!\left(\frac{n^2\,\delta^2\,\Delta_2}
+{b\,\varepsilon^2}\right)
+\]
+oracle calls, where 
+$\Delta_1 = f(w^{(0)}) - f^*$ and 
+$\Delta_2 = \sum_{j=0}^{n/b-1}
+\|w_{j+1}^{(0)} - w_j^{(0)}\|^2$.
+In particular, for $b = n^\beta$ with 
+$\beta \in (0, 1]$:
+\[
+N_{\text{oracle}} 
+= \mathcal{O}\!\left(\frac{n\,\delta\,\Delta_1}{\varepsilon^2}\right) 
++ \mathcal{O}\!\left(\frac{n^{2-\beta}\,\delta^2\,\Delta_2}
+{\varepsilon^2}\right).
+\]
+\end{theorem}
+
+The first term $O(n\,\delta\,\Delta_1/\varepsilon^2)$ is independent of the $b$ and comes from the variance accumulation over epoch because of the \texttt{SARAH} estimator. It matches the well-known oracle complexity $O(n\,L\,\Delta/\varepsilon^2)$, established for no full gradient method \texttt{No Full Grad SARAH} \cite{medyakov2025variance} with the smoothness constant replaced by second order similarity constant $\delta$. The second term 
+term $O(n^2\,\delta^2\,\Delta_2/(b\,\varepsilon^2))$ emerges because the initial gradient estimation $v^{(s+1)}$ in Line \ref{line:reinitialization_of_v} is constructed from gradients computed at the iterates of the previous epoch. 
+
+Two prior works, \texttt{Shuffled SARAH} and \texttt{SILVER},  were discussed in No full gradient methods under similarity part of Related Work. Firstly, like Algorithm \ref{alg:nofullgrad_sarah}, \texttt{Shuffled SARAH} relies on running mean accumulator $\tilde v$ during the epoch to avoid full gradient calculation. But the difference is that they aggregate $\nabla f_{i}$ directly, whereas we apply it to the difference $\nabla(f-f_i)$, and then update parameters with a proximal step. This formulation allows the $\delta$ similarity assumption to enter the convergence bound, and to write down the descent step. 
+Second, \texttt{Shuffled SARAH} is restricted to centralized learning, and processes one component in one iteration, while our method aggregates a batch of clients in one time. Thirdly, their analysis is conducted in the strongly convex regime with a convergence rate $\mathcal{O}\bigl((nL/\mu + n^{2}\delta/\mu)\log(1/\varepsilon)\bigr)$. The $n^2$ dependence is suboptimal: the optimal rate for similarity-based methods in their setting is $\mathcal{O}(n + n^{3/4}\sqrt{\delta/\mu})$, proved in \cite{lin2023stochastic}. 
+
+Closer in spirit, \texttt{SILVER} \cite{oko2024silver} also targets 
+distributed non-convex optimization with a \texttt{SARAH}-type 
+estimator under similarity, reaching a communication complexity of 
+$\mathcal{O}(n + \delta n^{1/2}/\varepsilon^2)$ in the number of 
+transmitted gradients under Hessian heterogeneity $\delta$. However, \texttt{SILVER} 
+maintains a per-client state vector on the server, costing 
+$\mathcal{O}(nd)$ memory; in contrast, the running-mean accumulator 
+$\tilde v_t^{(s)}$ keeps the server-side memory at $\mathcal{O}(d)$, 
+independent of $n$, which is essential when $n$ is large.
+
+% \begin{lemma}
+% \label{lem:descent}
+%     \[ 
+%     f(w_{t+1}^{(s)}) \leq f(w_t^{(s)}) 
+%   + \left(-\frac{1}{4\theta} + \delta\right)\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 
+%   + \theta\,\|v_t^{(s)} - \nabla(f - f_1)(w_t^{(s)})\|^2
+%     \]
+% \end{lemma}
+
+
+% \begin{lemma}
+% \label{lem:gradient_mapping}
+%     By definition let's take
+%     $
+%     G_\theta(w) = \frac{1}{\theta}\Big(w - \prox_{\theta f_1} \left(w - \theta \, \nabla(f - f_1)(w) \right)\Big)
+%     $
+%     \[ 
+%     \theta^2\,\|G_\theta(w_t^{(s)})\|^2 
+%   \leq 2\,\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 
+%   + 2\theta^2\,\|\nabla(f - f_1)(w_t^{(s)}) - v_t^{(s)}\|^2
+%     \]
+% \end{lemma}
+
+% \begin{lemma}
+% \label{lem:epoch_descent}
+%     For epoch $s$ holds next inequality 
+%     \begin{multline*}
+%         f(w_{n/b+1}^{(s)}) \leq f(w_0^{(s)}) 
+%   - \alpha \theta^2 \sum_{t=0}^{n/b}\|G_\theta(w_t^{(s)})\|^2 
+%   + \left(-\frac{1}{4\theta} + \delta + 2\alpha
+%     + (\theta + 2\alpha \theta^2)\,\frac{18e\,\delta_f^2\,n}{b^3}\right)
+%     \sum_{j=0}^{n/b-1}\|w_{j+1}^{(s)} - w_j^{(s)}\|^2 \\
+%   + (\theta + 2\alpha\theta^2)\,\frac{12e\,\delta_f^2\,n}{b^4}
+%     \sum_{j=0}^{n/b - 1}\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2
+%     \end{multline*}
+% \end{lemma}
+
+
+% The first term is independent of the batch size $b$ 
+% and reflects the cost of variance reduction within 
+% each epoch. The second term captures the inter-epoch 
+% error inherited from the initial gradient estimator 
+% and decreases with $b$. 
+
+% \section{Experiments} \label{experiments}
+% To evaluate the relevance of \texttt{NFG-SS}, we conduct a clear empirical study. The goal of this section is to verify that removing the full-gradient calculation does not hurt convergence in real-life scenarios.
+
+% \paragraph{Experimental Setup} To benchmark our approach, we train \textsc{ResNet-18} \citep{he2016deepresnet} to classify the \textsc{CIFAR-10} dataset \citep{krizhevsky2009learning} with cross-entropy loss. The data is distributed uniformly at random across $n=11$ nodes:
+% one node is chosen as the server $f_1$ and the remaining
+% $10$ act as clients $f_2,\dots,f_{11}$. We use train loss and test accuracy as traditional metrics.
+
+% We compare \texttt{NFG-SS} against
+% \texttt{SVRS} \citep{lin2023stochastic} and \texttt{FedAvg} \citep{mcmahan2017communication}.
+% Our experiments assess their relative performance under identical conditions, including partition, inexact proximal solver and number of outer
+% epochs. For these algorithms we leave $\nicefrac{1}{2}$ of the total available data on the server $f_1$. Such a strategy allows us to more accurately solve the problem of finding the optimal argument at each iteration for both methods \texttt{NFG-SS} and \texttt{SVRS}. The construction with the gradient estimator $v_t^{(s)}$ isolates the
+% effect of removing the full-gradient computation. We follow the original
+% \texttt{SVRS} exactly, performing an exact full-gradient reference
+% $\tfrac{1}{n}\sum_i\nabla(f_i-f_1)(w_0)$
+% by querying every client over its entire local dataset. %The corresponding $\mathcal{O}(n)$ vectors per refresh are counted toward the communication budget on the horizontal axis of Figure~\ref{fig:cifar10-curves}.
+% \texttt{FedAvg} is run in a communication-matched regime, such that the total
+% number of transmitted vectors over training is set equal to that of
+% \texttt{NFG-SS}.
+
+% During the training process we use client batches $b = 1$. The proximal step on $f_1$ in both \texttt{NFG-SS} and \texttt{SVRS}
+% is approximated by the same inexact solver, see details about it and tune of hyperparameters in Appendix \ref{ap:exp}. 
+
+% \paragraph{Experiment Results}
+% \label{sec:exp-results}
+
+% Figure~\ref{fig:cifar10-curves} demonstrates test accuracy versus the
+% number of transmitted vectors. \begin{wrapfigure}{r}{0.6\textwidth}
+% \begin{minipage}{0.55\textwidth}
+% \centering
+% \includegraphics[width=\linewidth]{figure_1.pdf}
+% \caption{Comparison of \texttt{NFG-SS}, \texttt{SVRS} and \texttt{FedAvg} on CIFAR-10.}
+% \label{fig:cifar10-curves}
+% \vspace{-6mm}
+% \end{minipage}
+% \end{wrapfigure}
+% \texttt{NFG-SS} outperforms \texttt{SVRS} in the same communication budget, whereas communication-matched \texttt{FedAvg} doesn't even achieve their level. Beyond the
+% final accuracy, \texttt{NFG-SS} also reaches the \texttt{SVRS}
+% plateau substantially earlier in training, indicating that the
+% running-mean estimator $\tilde v_t^{(s)}$ provides variance control
+% comparable to a full-gradient calculation at the start of every epoch.
+% The gap reflects that \texttt{NFG‑SS}, even with the same communication budget, leverages variance reduction that \texttt{FedAvg} lacks, so it suppresses client‑drift noise and converges faster.
+
+\section{Experiments} \label{experiments}
+To complement the theoretical analysis, we conduct a controlled empirical study on image classification. The goal of this section is to evaluate whether the proposed no-full-gradient estimator can preserve practical convergence while avoiding full-gradient refreshes.
+
+\begin{figure}[ht]
+\centering
+\includegraphics[width=\linewidth]{figure_1.pdf}
+\caption{Comparison of \texttt{NFG-SS}, \texttt{SVRS}, and \texttt{FedAvg} on \textsc{CIFAR-10}.}
+\label{fig:cifar10-curves}
+\end{figure}
+
+\paragraph{Experimental Setup.}
+We train \textsc{ResNet-18} \citep{he2016deepresnet} on \textsc{CIFAR-10} \citep{krizhevsky2009learning} using the cross-entropy loss. The data is distributed uniformly at random across $n=11$ nodes: one node is designated as the server-side objective $f_1$, while the remaining ten nodes act as clients $f_2,\dots,f_{11}$. We report training loss and test accuracy as the main performance metrics.
+
+We compare \texttt{NFG-SS} against \texttt{SVRS} \citep{lin2023stochastic} and \texttt{FedAvg} \citep{mcmahan2017communication}. All methods are evaluated under the same data partition. For \texttt{NFG-SS} and \texttt{SVRS}, we also use the same inexact proximal solver and the same number of outer epochs. We allocate $\nicefrac{1}{2}$ of the total training data to the server-side objective $f_1$ and distribute the remaining data uniformly across the clients. This setup makes the proximal subproblem sufficiently informative and allows us to isolate the effect of replacing full-gradient refreshes with the running-mean estimator.
+
+For \texttt{SVRS}, we follow the original method and compute the exact full-gradient reference $\tfrac{1}{n}\sum_i\nabla(f_i-f_1)(w_0)$ at the beginning of each epoch by querying every client over its local dataset. In contrast, \texttt{NFG-SS} initializes its estimator using gradients accumulated during the previous epoch and therefore avoids full-gradient computation at a common iterate. \texttt{FedAvg} is run in a communication-matched regime, where the total number of transmitted vectors over training is set equal to that of \texttt{NFG-SS}.
+
+In all experiments, we use client batch size $b=1$. The proximal step on $f_1$ in both \texttt{NFG-SS} and \texttt{SVRS} is approximated by the same inexact solver. Details of the solver, hyperparameter tuning, and implementation are provided in Appendix~\ref{ap:exp}.
+
+\paragraph{Experiment Results.}
+\label{sec:exp-results}
+
+Figure~\ref{fig:cifar10-curves} reports test accuracy as a function of the number of transmitted vectors. \texttt{NFG-SS} achieves higher test accuracy than \texttt{SVRS} under the same communication budget. Moreover, it reaches the \texttt{SVRS} accuracy plateau substantially earlier in training, suggesting that the running-mean estimator $\tilde v_t^{(s)}$ provides effective variance control without requiring a full-gradient refresh at the start of each epoch. Communication-matched \texttt{FedAvg} remains below both variance-reduced methods, which highlights the importance of variance reduction under a fixed communication budget. Overall, these results support the main empirical message of the paper: in this controlled setting, full-gradient refreshes can be replaced by the proposed no-full-gradient estimator without degrading the convergence.
+
+\section{Conclusion}
+
+We proposed \texttt{NFG-SS}, a distributed variance-reduced method for non-convex optimization under second-order similarity. The method combines a \texttt{SARAH}-type recursive estimator with a running-mean accumulator built from gradients already computed during the previous epoch. This construction removes the need for full-gradient refreshes while preserving the dependence on the similarity parameter $\delta$.
+
+To the best of our knowledge, \texttt{NFG-SS} is the first distributed method that exploits second-order similarity without any full client communication at a common iterate. Existing similarity-based methods rely on full-gradient computations or synchronized full-participation rounds, whereas no-full-gradient methods are mainly developed for centralized finite-sum optimization and do not benefit from the regime $\delta \ll L$. Our work bridges these two directions by showing that similarity can be used even when full communication is completely avoided.
+
+We prove convergence guarantees for non-convex objectives under second-order similarity and show that the resulting complexity depends on $\delta$ rather than on the smoothness constant $L$. Experiments on \textsc{CIFAR-10} with \textsc{ResNet-18} support the theoretical findings and demonstrate that the proposed running-mean estimator can replace full-gradient refreshes without degrading practical convergence.
+
+\bibliographystyle{plainnat}
+\bibliography{bibliography.bib}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+\input{checklist.tex}
+
+\newpage
+\appendix
+
+\section{Experimental details.} \label{ap:exp}
+
+\textbf{Hardware Details.} All experiments were implemented in Python using the PyTorch deep learning framework \citep{torch}. The computational infrastructure consisted of a server equipped with an Intel Xeon Gold 6342 CPU and two NVIDIA A100 40 GB GPUs. The total wall‑clock time for the full set of experiments was approximately $60$ hours.
+
+\textbf{Inexact Proximal Subproblem.}
+At every outer step we must evaluate
+\begin{equation}
+w^{\star}\;\approx\;\operatorname{prox}_{\theta f_{1}}\!\bigl(w_{\mathrm{out}}-\theta v\bigr)
+\;=\;\arg\min_{w}\;\Bigl\{\,\tfrac{1}{2\theta}\,\|w-z\|^{2}+f_{1}(w)\,\Bigr\},
+\qquad z := w_{\mathrm{out}}-\theta v,
+\label{eq:prox}
+\end{equation}
+where $w_{\mathrm{out}}$ is the current outer iterate, $v$ is the auxiliary direction maintained by the outer loop, $\theta>0$ is the proximal step-size, and $f_{1}$ is accessible only through stochastic gradients on a server-side mini-batch $\xi$.
+The iterate is warm-started at $w_{0}=z$, which absorbs the linear term $\langle\theta v,\cdot\rangle$ into the initialization, and at iteration $t$ we form the search direction
+\begin{equation}
+d_{t}\;=\;\bigl(w_{t}-w_{\mathrm{out}}\bigr)\;+\;\theta\,\nabla f_{1}(w_{t};\xi_{t}),
+\label{eq:dir}
+\end{equation}
+i.e.\ the gradient of $\Psi(w)=\tfrac12\|w-w_{\mathrm{out}}\|^{2}+\theta f_{1}(w)$ at $w_{t}$. Since the linear term is encoded only by the warm-start, a small number of inner epochs (we determine here $4$ passes over the server loader for achieving the proper solution) is critical: the iterate stays in the $v$-shifted neighbourhood of $z$, and the bias of running~\eqref{eq:dir} to convergence is negligible, even though its fixed point would otherwise drift towards $\operatorname{prox}_{\theta f_{1}}(w_{\mathrm{out}})$.
+
+\textbf{Inner Update.}
+Direction $d_{t}$ is smoothed by a heavy-ball term, $d_{t}\!\leftarrow\!\mu p_{t-1}+d_{t}$ with $p_{t}=d_{t}$ and $\mu=0.9$. The parameters are then updated either by SGD with decoupled weight decay $\gamma_{\mathrm{wd}}=0.1$,
+$w_{t+1}=(1-\gamma_{\mathrm{wd}}\eta_{t})w_{t}-\eta_{t}d_{t}$
+The step-size starts at $\eta_{0}=\kappa/\!\bigl(2(1+\theta L_{1})\bigr)$, where $L_{1}$ bounds the Lipschitz constant of $\nabla f_{1}$ and $\kappa$ is a tunable multiplier. The inner loop terminates either after a prescribed budget of passes or as soon as $\|d_{t}\|/\|d_{0}\|<\varepsilon_{\mathrm{stop}}$.
+
+
+\textbf{Hyperparameters.}
+For every method we tune the hyperparameters listed in
+Table \ref{tab:hyper-grid} via a hand-crafted grid, using grid-search. The score of a trial is its best validation accuracy. We then evaluate the best configuration on the
+held-out test set.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+Method & Hyperparameter & Search values \\
+\midrule
+\multirow{5}{*}{\texttt{NFG-SS}, \texttt{SVRS}}
+  & step size $\theta$           & [0.1, 0.15, 0.2, 0.25, 0.5, 1.0] \\
+  & inner-prox epochs $K$    & [4, 5, 6] \\
+  & inner-prox momentum $\mu$     & [0.0, 0.5, 0.9, 0.95] \\
+  & inner-prox weight decay $\gamma_{\mathrm{wd}}$   & [0.0, 0.01, 0.05, 0.1] \\
+  & inner-prox learning rate factor $\kappa$    & [0.1, 0.15, 0.2, 0.25, 0.5, 1.0] \\
+\midrule
+\multirow{1}{*}{\texttt{FedAvg}}
+  & local learning rate          & [0.005, 0.007, 0.01, 0.03, 0.05] \\
+\bottomrule
+\end{tabular}
+\caption{Hyperparameter search grids.}
+\label{tab:hyper-grid}
+\end{table}
+
+\textbf{Design features.} As a practical modification without theoretical guarantees, we introduce a schedule for the cumulative gradient difference $v$ to make the proximal subproblem more stable when the inner loop is short and $v$ is noisy. As the inner loop progresses, the weight on $v$ is gradually reduced, which dampens overshooting and limits the effect of an imperfect $v$, keeping the update closer to the current outer iterate $w_{\mathrm{outer}}$. This schedule therefore balances aggressiveness and stability: the early steps exploit $v$, while the later steps stabilize the trajectory and improve convergence.
+
+
+\section{Proofs} 
+\label{app:proofs}
+\subsection{General Inequalities}
+Firstly, we will list several standard inequalities used throughout the proofs. For all vectors $x, y, \{x_i\}\in\mathbb{R}^d$, for all scalars $\alpha, \beta > 0$: 
+
+\begin{align}
+\label{ineq:scalar} \tag{Scalar} 2\langle x, y \rangle & \leqslant \frac{\|x\|^2}{\alpha} + \alpha \|y\|^2, \\
+\label{ineq:norm} \tag{Norm} 2\langle x, y \rangle & = \|x + y\|^2 - \|x\|^2 - \|y\|^2, \\
+\label{ineq:quad} \tag{Quad} \|x + y\|^2 & \leqslant (1 + \beta)\|x\|^2 + (1 + \frac{1}{\beta})\|y\|^2, \\
+\label{ineq:cs} \tag{CS}  \left\|\sum_{i=1}^{n} x_i\right\|^2 & \leqslant  n \sum_{i=1}^{n} \|x_i\|^2  \quad \quad (\text{Cauchy-Schwarz}),\\
+\end{align}
+
+\subsection{Proof of Lemma \ref{lem:descent}}
+
+\begin{lemma}
+\label{lem:descent}
+    \[ 
+    f(w_{t+1}^{(s)}) \leq f(w_t^{(s)}) 
+  + \left(-\frac{1}{4\theta} + \delta\right)\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 
+  + \theta\,\|v_t^{(s)} - \nabla(f - f_1)(w_t^{(s)})\|^2
+    \]
+\end{lemma}
+\begin{proof}
+
+Start from
+\begin{align*}
+    f(w_{t+1}^{(s)}) - f(w_t^{(s)}) &= \int_0^1 \langle \nabla f\bigl(w_t^{(s)} + \tau(w_{t+1}^{(s)} - w_t^{(s)})\bigr),\; 
+   w_{t+1}^{(s)} - w_t^{(s)} \rangle \, d\tau \\
+\end{align*}
+And the same for $f_1$
+\begin{align*}
+    f_1(w_{t+1}^{(s)}) - f_1(w_t^{(s)}) &= \int_0^1 \langle \nabla f_1 \bigl(w_t^{(s)} + \tau(w_{t+1}^{(s)} - w_t^{(s)})\bigr),\; 
+   w_{t+1}^{(s)} - w_t^{(s)} \rangle \, d\tau \\
+\end{align*}
+Considering these two inequalities together, we obtain 
+\begin{align*}
+f(w_{t+1}^{(s)}) - f(w_t^{(s)}) 
+&= \int_0^1 \langle \nabla(f - f_1)\bigl(w_t^{(s)} + \tau(w_{t+1}^{(s)} - w_t^{(s)})\bigr),\; 
+   w_{t+1}^{(s)} - w_t^{(s)} \rangle \, d\tau 
+   + f_1(w_{t+1}^{(s)}) - f_1(w_t^{(s)}).
+\end{align*}
+
+By the proximal step definition:
+\[
+f_1(w_{t+1}^{(s)}) + \langle v_t^{(s)},\; w_{t+1}^{(s)} - w_t^{(s)} \rangle 
++ \frac{1}{2\theta}\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 
+\leq f_1(w_t^{(s)}),
+\]
+Hence
+\[
+f_1(w_{t+1}^{(s)}) - f_1(w_t^{(s)}) 
+\leq -\frac{1}{2\theta}\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 
+- \langle v_t^{(s)},\; w_{t+1}^{(s)} - w_t^{(s)} \rangle.
+\]
+
+Then, adding and subtracting  $\nabla (f-f_1)(w^{(s)}_t)$ as smart zero, we get
+\begin{align*}
+f(w_{t+1}^{(s)}) - f(w_t^{(s)}) 
+&\leq -\frac{1}{2\theta}\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 \\
+&\quad + \int_0^1 \langle \nabla(f{-}f_1)\bigl(w_t^{(s)} 
+      + \tau(w_{t+1}^{(s)} - w_t^{(s)})\bigr) 
+      - \nabla(f{-}f_1)(w_t^{(s)}),\; 
+      w_{t+1}^{(s)} - w_t^{(s)} \rangle \, d\tau \\
+&\quad + \langle \nabla(f{-}f_1)(w_t^{(s)}) - v_t^{(s)},\; 
+      w_{t+1}^{(s)} - w_t^{(s)} \rangle.
+\end{align*}
+
+For the integral term, by $\delta$ similarity \ref{second-order-similarity}:
+\begin{align*}
+&\int_0^1 \langle \nabla(f{-}f_1)\bigl(w_t^{(s)} 
+  + \tau(w_{t+1}^{(s)} - w_t^{(s)})\bigr) 
+  - \nabla(f{-}f_1)(w_t^{(s)}),\; 
+  w_{t+1}^{(s)} - w_t^{(s)} \rangle \, d\tau \\
+&\qquad \leq \int_0^1 \delta\,\|\tau(w_{t+1}^{(s)} - w_t^{(s)})\| 
+  \cdot \|w_{t+1}^{(s)} - w_t^{(s)}\| \, d\tau 
+\leq \delta\,\|w_{t+1}^{(s)} - w_t^{(s)}\|^2.
+\end{align*}
+
+For the inner product term, by \ref{ineq:scalar} 
+\begin{align*}
+f(w_{t+1}^{(s)}) - f(w_t^{(s)}) 
+&\leq -\frac{1}{2\theta}\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 
+  + \frac{\alpha}{2}\|\nabla(f{-}f_1)(w_t^{(s)}) - v_t^{(s)}\|^2 \\
+&\quad + \frac{1}{2\alpha}\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 
+  + \delta\,\|w_{t+1}^{(s)} - w_t^{(s)}\|^2.
+\end{align*}
+
+Setting $\alpha = 2\theta$:
+\[
+f(w_{t+1}^{(s)}) - f(w_t^{(s)}) 
+\leq \left(-\frac{1}{4\theta} + \delta\right)\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 
++ \theta\,\|\nabla(f{-}f_1)(w_t^{(s)}) - v_t^{(s)}\|^2. \qedhere
+\]
+\end{proof}
+
+\subsection{Proof of Lemma \ref{lem:deviation_gradient}}
+
+\begin{lemma}[Lemma 1]
+% \label{lem:variance-recursion}
+For $t = 0, \ldots, n/b$:
+\[
+\|v_t^{(s)} - \nabla(f{-}f_1)(w_t^{(s)})\|^2
+\leq e\,\|v_0^{(s)} - \nabla(f{-}f_1)(w_0^{(s)})\|^2
++ \frac{18e\,\delta^2\,n}{b}
+\sum_{j=0}^{t-1}\|w_{j+1}^{(s)} - w_j^{(s)}\|^2.
+\]
+\end{lemma}
+\begin{proof}
+By the SARAH recursion and adding and subtracting 
+$\nabla(f{-}f_1)(w_{t-1}^{(s)})$:
+\begin{align*}
+&\|v_t^{(s)} - \nabla(f{-}f_1)(w_t^{(s)})\|^2 \\
+&= \bigg\|\Big[v_{t-1}^{(s)} - \nabla(f{-}f_1)(w_{t-1}^{(s)})\Big] 
++ \bigg[\frac{1}{b}\sum_{i \in B_t^{(s)}}
+\Big(\nabla(f_i{-}f_1)(w_t^{(s)}) 
+  - \nabla(f_i{-}f_1)(w_{t-1}^{(s)})\Big) \\
+&\qquad\qquad - \Big(\nabla(f{-}f_1)(w_t^{(s)}) 
+  - \nabla(f{-}f_1)(w_{t-1}^{(s)})\Big)\bigg]\bigg\|^2 \\
+&\overset{\eqref{ineq:quad}}{\leq} \left(1 + \frac{1}{\alpha}\right)
+\|v_{t-1}^{(s)} - \nabla(f{-}f_1)(w_{t-1}^{(s)})\|^2 
++ (\alpha + 1)\,A_{B_t^{(s)}}(w_t^{(s)}, w_{t-1}^{(s)}),
+\end{align*}
+where
+\begin{multline*}
+A_{B_t^{(s)}}(w_t^{(s)}, w_{t-1}^{(s)}) 
+\coloneqq \bigg\|\frac{1}{b}\sum_{i \in B_t^{(s)}}
+\Big(\nabla(f_i{-}f_1)(w_t^{(s)}) 
+  - \nabla(f_i{-}f_1)(w_{t-1}^{(s)})\Big) \\
+- \Big(\nabla(f{-}f_1)(w_t^{(s)}) 
+  - \nabla(f{-}f_1)(w_{t-1}^{(s)})\Big)\bigg\|^2.
+\end{multline*}
+We now bound $A_{B_t^{(s)}}$ deterministically. Denote 
+\[
+Y_i \coloneqq \nabla(f_i{-}f_1)(w_t^{(s)}) 
+  - \nabla(f_i{-}f_1)(w_{t-1}^{(s)}), 
+\qquad 
+\bar{Y} \coloneqq \frac{1}{n}\sum_{i=1}^{n} Y_i 
+= \nabla(f{-}f_1)(w_t^{(s)}) 
+  - \nabla(f{-}f_1)(w_{t-1}^{(s)}).
+\]
+Then
+\[
+A_{B_t^{(s)}} 
+= \bigg\|\frac{1}{b}\sum_{i \in B_t^{(s)}} (Y_i - \bar{Y})\bigg\|^2 
+\overset{\eqref{ineq:cs}}{\leq} 
+\frac{1}{b}\sum_{i \in B_t^{(s)}} \|Y_i - \bar{Y}\|^2.
+\]
+For each summand, by~\eqref{ineq:quad} with $\beta = 1/2$ 
+and using that $\nabla(f_i - f_1)$ is $2\delta$-Lipschitz 
+and $\nabla(f - f_1)$ is $\delta$-Lipschitz 
+by Assumption~\ref{second-order-similarity}:
+\[
+\|Y_i - \bar{Y}\|^2 
+\leq \tfrac{3}{2}\|Y_i\|^2 + 3\|\bar{Y}\|^2 
+\leq 6\delta^2\|w_t^{(s)} - w_{t-1}^{(s)}\|^2 
++ 3\delta^2\|w_t^{(s)} - w_{t-1}^{(s)}\|^2 
+= 9\delta^2\|w_t^{(s)} - w_{t-1}^{(s)}\|^2.
+\]
+Since $|B_t^{(s)}| = b$, we obtain 
+$A_{B_t^{(s)}} \leq 9\delta^2\|w_t^{(s)} - w_{t-1}^{(s)}\|^2$.
+Setting $\alpha = n/b$ and unrolling from $t$ down to $0$:
+\begin{align*}
+\|v_t^{(s)} - \nabla(f{-}f_1)(w_t^{(s)})\|^2
+&\leq \left(1 + \frac{b}{n}\right)^{n/b}
+\|v_0^{(s)} - \nabla(f{-}f_1)(w_0^{(s)})\|^2 
++ \left(\frac{n}{b} + 1\right)\left(1 + \frac{b}{n}\right)^{n/b}
+\sum_{j=1}^{t} 9\delta^2\|w_j^{(s)} - w_{j-1}^{(s)}\|^2 \\
+& \leq e\,\|v_0^{(s)} - \nabla(f{-}f_1)(w_0^{(s)})\|^2 
++ \frac{18e\,n\,\delta^2}{b}
+\sum_{j=0}^{t-1}\|w_{j+1}^{(s)} - w_j^{(s)}\|^2.
+\qedhere
+\end{align*}
+\end{proof}
+
+
+
+
+\subsection{Proof of Lemma \ref{lem:initial_deviation_gradient}}
+
+\begin{lemma}[Lemma 2]
+\[ 
+e\,\|v_0^{(s)} - \nabla(f - f_1)(w_0^{(s)})\|^2 
+  \leq \frac{16e\, n \, \delta^2 }{b}\sum_{j=0}^{n/b}\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2
+\]
+\end{lemma}
+
+\begin{proof}
+By definition of $v^{(s)} = \tilde{v}^{(s)}_{\lceil{n/b}\rceil + 1}$, and for $\tilde{v}^{(s)}_{\lceil{n/b}\rceil + 1}$ applying \ref{eq:bridge_main_update}
+
+\begin{align*}
+e\,\|v_0^{(s)} - \nabla(f{-}f_1)(w_0^{(s)})\|^2 
+&= e\,\|v^{(s)} - \nabla(f{-}f_1)(w_0^{(s)})\|^2 \\
+&= e\,\bigg\| \frac{1}{b}\frac{1}{n/b}\sum_{t=1}^{n/b} 
+   \frac{1}{b}\sum_{i \in B_t} \nabla(f_i - f_1)(w_t^{(s-1)}) 
+   - \frac{1}{n}\sum_{i=1}^{n} \nabla(f_i - f_1)(w_0^{(s)})\bigg\|^2.
+\end{align*}
+
+Replace $\sum_{i=1}^{n}$ with double sum $\sum_{t=1}^{n/b} \sum_{B^t}$
+\[
+\leq \frac{e}{n^2}\,\bigg\|
+\sum_{t=1}^{n/b}\sum_{i \in B_t}
+\Big(\nabla(f_i - f_1)(w_t^{(s-1)}) - \nabla(f_i - f_1)(w_0^{(s)})\Big)
+\bigg\|^2.
+\]
+
+applying \ref{ineq:cs} to the outer sum over batches ($n/b$ terms). 
+
+\[
+\leq \frac{e}{n^2}\cdot\frac{n}{b}\sum_{t=1}^{n/b}
+\bigg\|\sum_{i \in B_t}
+\Big(\nabla(f_i - f_1)(w_t^{(s-1)}) - \nabla(f_i - f_1)(w_0^{(s)})\Big)
+\bigg\|^2.
+\]
+
+Applying \ref{ineq:cs} inequality to the inner sum over $B_t$ ($b$ terms):
+\[
+\leq \frac{e}{n}
+\sum_{t=1}^{n/b}\sum_{i \in B_t}
+\|\nabla(f_i - f_1)(w_t^{(s-1)}) - \nabla(f_i - f_1)(w_0^{(s)})\|^2.
+\]
+
+By the $2\delta$-Lipschitzness of each $\nabla(f_i - f_1)$:
+\[
+\leq \frac{4e\,\delta^2}{n}\sum_{t=1}^{n/b}\sum_{i \in B_t}
+\|w_t^{(s-1)} - w_0^{(s)}\|^2
+= \frac{4e\,\delta^2 \, b}{n}\sum_{t=1}^{n/b}
+\|w_t^{(s-1)} - w_0^{(s)}\|^2.
+\]
+
+We add smart zero via $w_{0}^{(s-1)}$ and use \ref{ineq:quad} with $\beta=1$. 
+\begin{align*}
+&\leq \frac{8e\,\delta^2 \, b}{n} 
+\sum_{t=1}^{n/b}\|w_0^{(s-1)} - w_0^{(s)}\|^2 
++ \frac{8e\,\delta^2 \, b}{n}\sum_{t=1}^{n/b}
+\|w_t^{(s-1)} - w_0^{(s-1)}\|^2.
+\end{align*}
+
+Since the first term does not depend on $t$, 
+the sum contributes a factor of $n/b$:
+\[
+\leq 8e\,\delta^2\,
+\|w_0^{(s-1)} - w_0^{(s)}\|^2 
++ \frac{8e\,\delta^2\,b}{n}\sum_{t=1}^{n/b}
+\|w_t^{(s-1)} - w_0^{(s-1)}\|^2.
+\]
+
+Now we telescope each term. Since 
+$w_0^{(s)} = w_{n/b}^{(s-1)}$:
+\[
+\|w_0^{(s-1)} - w_0^{(s)}\|^2 
+= \bigg\|\sum_{j=0}^{n/b-1}
+(w_{j+1}^{(s-1)} - w_j^{(s-1)})\bigg\|^2 
+\overset{\ref{ineq:cs}}{\leq} 
+\frac{n}{b}\sum_{j=0}^{n/b-1}
+\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2,
+\]
+and for each $t$:
+\[
+\|w_t^{(s-1)} - w_0^{(s-1)}\|^2 
+= \bigg\|\sum_{j=0}^{t-1}
+(w_{j+1}^{(s-1)} - w_j^{(s-1)})\bigg\|^2 
+\overset{\ref{ineq:cs}}{\leq} 
+t\sum_{j=0}^{t-1}
+\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2 
+\leq \frac{n}{b}\sum_{j=0}^{n/b-1}
+\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2.
+\]
+
+Substituting: the first term gives
+\[
+8e\,\delta^2 \cdot \frac{n}{b}
+\sum_{j=0}^{n/b-1}
+\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2 
+= \frac{8e\,\delta^2\,n}{b}
+\sum_{j=0}^{n/b-1}
+\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2,
+\]
+and the second:
+\[
+\frac{8e\,\delta^2\,b}{n} \cdot 
+\frac{n}{b} \cdot \frac{n}{b}
+\sum_{j=0}^{n/b-1}
+\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2 
+= \frac{8e\,\delta^2\,n}{b}
+\sum_{j=0}^{n/b-1}
+\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2.
+\]
+
+Combining:
+\[
+e\,\|v_0^{(s)} - \nabla(f{-}f_1)(w_0^{(s)})\|^2 
+\leq \frac{16e\,\delta^2\,n}{b}
+\sum_{j=0}^{n/b-1}
+\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2.
+\qedhere
+\]
+\end{proof}
+\subsection{Proof of lemma \ref{lem:gradient_mapping}}
+
+\begin{lemma}
+\label{lem:gradient_mapping}
+    By definition let's take
+    $
+    G_\theta(w) = \frac{1}{\theta}\Big(w - \prox_{\theta f_1} \left(w - \theta \, \nabla(f - f_1)(w) \right)\Big)
+    $
+    \[ 
+    \theta^2\,\|G_\theta(w_t^{(s)})\|^2 
+  \leq 2\,\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 
+  + 2\theta^2\,\|\nabla(f - f_1)(w_t^{(s)}) - v_t^{(s)}\|^2
+    \]
+\end{lemma}
+
+\begin{proof}
+By definition of $G_\theta$ and adding smart zero as $w_{t+1}^{(s)}$:
+\begin{align*}
+\theta\|G_\theta(w_t^{(s)})\| 
+&= \|w_t^{(s)} - \operatorname{prox}_{\theta f_1}
+\big(w_t^{(s)} - \theta\nabla(f{-}f_1)(w_t^{(s)})\big)\| \\
+&\leq \|w_t^{(s)} - w_{t+1}^{(s)} 
++ w_{t+1}^{(s)} - \operatorname{prox}_{\theta f_1}
+\big(w_t^{(s)} - \theta\nabla(f{-}f_1)(w_t^{(s)})\big)\| \\
+&\leq \|w_t^{(s)} - w_{t+1}^{(s)}\| 
++ \|\operatorname{prox}_{\theta f_1}
+\big(w_t^{(s)} - \theta v_t^{(s)}\big) 
+- \operatorname{prox}_{\theta f_1}
+\big(w_t^{(s)} - \theta\nabla(f{-}f_1)(w_t^{(s)})\big)\|,
+\end{align*}
+where we substituted the update step of Line \ref{line:argmin-step} of Algorithm \ref{alg:nofullgrad_sarah} is equivalently $\prox_{\theta f_1}\!\left(w_t^{(s)} - \theta v_t^{(s)}\right)$.
+By nonexpansiveness of $\prox$:
+\begin{align*}
+\theta\|G_\theta(w_t^{(s)})\| 
+& \leq \|w_{t+1}^{(s)} - w_t^{(s)}\| 
++ \theta\|\nabla(f{-}f_1)(w_t^{(s)}) - v_t^{(s)}\| 
+\end{align*}
+\[
+ \theta^2\|G_\theta(w_t^{(s)})\|^2 
+\overset{\eqref{ineq:scalar}}{\leq}
+2\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 
++ 2\theta^2\|\nabla(f{-}f_1)(w_t^{(s)}) - v_t^{(s)}\|^2 
+\qedhere
+\]
+\end{proof}
+
+\subsection{Proof of lemma \ref{lem:epoch_descent}}
+
+\begin{lemma}
+\label{lem:epoch_descent}
+    For epoch $s$ holds next inequality 
+    \begin{multline*}
+        f(w_{n/b+1}^{(s)}) \leq f(w_0^{(s)}) 
+  - \alpha \theta^2 \sum_{t=0}^{n/b}\|G_\theta(w_t^{(s)})\|^2 
+  + \left(-\frac{1}{4\theta} + \delta + 2\alpha
+    + (\theta + 2\alpha \theta^2)\,\frac{18e\,\delta^2\,n^2}{b^2}\right)
+    \sum_{j=0}^{n/b-1}\|w_{j+1}^{(s)} - w_j^{(s)}\|^2 \\
+  + (\theta + 2\alpha\theta^2)\,\frac{16e\,\delta^2\,n^2}{b^2}
+    \sum_{j=0}^{n/b - 1}\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2
+    \end{multline*}
+\end{lemma}
+
+\begin{proof}
+Recall Lemma \ref{lem:descent}:
+\[
+f(w_{t+1}^{(s)}) \leq f(w_t^{(s)}) 
++ \left(-\frac{1}{4\theta} + \delta\right)
+\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 
++ \theta\,\|v_t^{(s)} - \nabla(f{-}f_1)(w_t^{(s)})\|^2.
+\]
+
+Multiply Lemma~\ref{lem:gradient_mapping} by $\alpha > 0$ 
+and add to the above:
+\begin{multline*}
+f(w_{t+1}^{(s)}) \leq f(w_t^{(s)}) 
+- \alpha\theta^2\|G_\theta(w_t^{(s)})\|^2 
++ \left(-\frac{1}{4\theta} + \delta + 2\alpha\right)
+\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 \\
++ (\theta + 2\alpha\theta^2)\,
+\|v_t^{(s)} - \nabla(f{-}f_1)(w_t^{(s)})\|^2.
+\end{multline*}
+
+Summing over $t = 0, \ldots, n/b - 1$:
+\begin{multline*}
+f(w_{n/b}^{(s)}) \leq f(w_0^{(s)}) 
+- \alpha\theta^2 \sum_{t=0}^{n/b-1}\|G_\theta(w_t^{(s)})\|^2 
++ \left(-\frac{1}{4\theta} + \delta + 2\alpha\right)
+\sum_{t=0}^{n/b-1}\|w_{t+1}^{(s)} - w_t^{(s)}\|^2 \\
++ (\theta + 2\alpha\theta^2)
+\sum_{t=0}^{n/b-1}\|v_t^{(s)} 
+- \nabla(f{-}f_1)(w_t^{(s)})\|^2.
+\end{multline*}
+
+Substituting Lemma \ref{lem:deviation_gradient} 
+into each $\|v_t^{(s)} - \nabla(f{-}f_1)(w_t^{(s)})\|^2$, 
+then Lemma \ref{lem:initial_deviation_gradient}
+into the initial error term, and bounding the double sum by
+$\sum_{t=1}^{n/b-1}\sum_{j=0}^{t-1}\|\Deltaw_j\|^2 
+\leq \frac{n}{b}\sum_{j}\|\Deltaw_j\|^2$:
+\begin{multline*}
+f(w_{n/b}^{(s)}) \leq f(w_0^{(s)}) 
+- \alpha\theta^2\sum_{t=0}^{n/b-1}\|G_\theta(w_t^{(s)})\|^2 \\
++ \left(-\frac{1}{4\theta} + \delta + 2\alpha 
++ (\theta + 2\alpha\theta^2)\,
+\frac{18e\,\delta^2\,n^2}{b^2}\right)
+\sum_{j=0}^{n/b-1}\|w_{j+1}^{(s)} - w_j^{(s)}\|^2 \\
++ (\theta + 2\alpha\theta^2)\,
+\frac{16e\,\delta^2\,n^2}{b^2}
+\sum_{j=0}^{n/b-1}\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2.
+\qedhere
+\end{multline*}
+\end{proof}
+
+
+\subsection{Proof of Theorem \ref{thm:convergence}} 
+\label{app:proof_theorem}
+\begin{proof}
+
+Starting from Lemma \ref{lem:epoch_descent}, we set the inner-epoch 
+coefficient equal to minus the inter-epoch coefficient, so that 
+the two sums telescope across epochs. This requires:
+\[
+\frac{1}{4\theta} - \delta - 2\alpha 
+- (\theta + 2\alpha\theta^2)\,\frac{18e\,\delta^2 n^2}{b^2} 
+= (\theta + 2\alpha\theta^2)\,\frac{16e\,\delta^2 n^2}{b^2}.
+\]
+
+Introduce dimensionless variables $B = \theta/\delta > 0$, 
+$A = \alpha/\delta > 0$. Then:
+\[
+\frac{1}{4B} - 1 - 2A 
+- (B + 2AB^2)\,\frac{18en^2}{b^2} 
+= (B + 2AB^2)\,\frac{16en^2}{b^2}.
+\]
+
+\[
+\frac{1}{4B} - 1 - 2A 
+- \frac{18en^2}{b^2}\,B - \frac{36en^2}{b^2}\,AB^2 
+= \frac{16en^2}{b^2}\,B + \frac{32en^2}{b^2}\,AB^2.
+\]
+
+Gathering all terms with $A$ on the right:
+\[
+\frac{1}{4B} - 1 - \frac{34en^2}{b^2}\,B 
+= \left(2 + \frac{68en^2}{b^2}\,B^2\right) A.
+\]
+
+Hence:
+\begin{equation}
+\label{eq:A-of-B}
+A(B) = \frac{\dfrac{1}{4B} - 1 
+  - \dfrac{34en^2}{b^2}\,B}
+{2 + \dfrac{68en^2}{b^2}\,B^2} > 0
+\end{equation}
+
+Let
+\[
+C \coloneqq (\theta + 2\alpha\theta^2)\,
+\frac{16e\,\delta^2 n^2}{b^2} > 0.
+\]
+Then 
+\begin{multline*}
+f(w_{n/b+1}^{(s)}) \leq f(w_0^{(s)}) 
+- \alpha\theta^2\sum_{t=0}^{n/b}\|G_\theta(w_t^{(s)})\|^2 
+- C\sum_{j=0}^{n/b}\|w_{j+1}^{(s)} - w_j^{(s)}\|^2 \\
++ C\sum_{j=0}^{n/b}\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2.
+\end{multline*}
+
+Since $w_0^{(s)} = w_{n/b+1}^{(s-1)}$, 
+we can rearrange:
+\begin{multline*}
+f(w_{n/b+1}^{(s)}) 
++ C\sum_{j=0}^{n/b}\|w_{j+1}^{(s)} - w_j^{(s)}\|^2 
+\leq f(w_{n/b+1}^{(s-1)}) 
++ C\sum_{j=0}^{n/b}\|w_{j+1}^{(s-1)} - w_j^{(s-1)}\|^2 \\
+- \alpha\theta^2\sum_{t=0}^{n/b}
+\|G_\theta(w_t^{(s)})\|^2.
+\end{multline*}
+
+Define the Lyapunov function:
+\[
+\Phi^{(s)} \coloneqq f(w_{n/b+1}^{(s)}) 
++ C\sum_{j=0}^{n/b}\|w_{j+1}^{(s)} - w_j^{(s)}\|^2.
+\]
+
+Then:
+\[
+\Phi^{(s)} \leq \Phi^{(s-1)} 
+- \alpha\theta^2\sum_{t=0}^{n/b}
+\|G_\theta(w_t^{(s)})\|^2.
+\]
+
+Rearranging and dividing by $n/b + 1$:
+\[
+\frac{1}{n/b + 1}\sum_{t=0}^{n/b}
+\|G_\theta(w_t^{(s)})\|^2 
+\leq \frac{\Phi^{(s-1)} - \Phi^{(s)}}
+{\alpha\theta^2(n/b + 1)} 
+\leq \frac{\Phi^{(s-1)} - \Phi^{(s)}}
+{\alpha\theta^2\,\tfrac{n}{b}}.
+\]
+
+Averaging over epochs $s = 1, \ldots, S$:
+\[
+\frac{1}{(n/b + 1)\,S}\sum_{s=1}^{S}\sum_{t=0}^{n/b}
+\|G_\theta(w_t^{(s)})\|^2 
+\leq \frac{\Phi^{(0)} - \Phi^{(S)}}
+{\alpha\theta^2\,\tfrac{n}{b}\,S} 
+\leq \varepsilon^2.
+\]
+
+Decompose $\Phi^{(0)} - \Phi^{(S)} = \Delta_1 + C\,\Delta_2$, 
+where
+\[
+\Delta_1 \coloneqq f(w_{n/b+1}^{(0)}) 
+- f(w_{n/b+1}^{(S)}), 
+\qquad 
+\Delta_2 \coloneqq \sum_{j=0}^{n/b}
+\|w_{j+1}^{(0)} - w_j^{(0)}\|^2 
+- \sum_{j=0}^{n/b}
+\|w_{j+1}^{(S)} - w_j^{(S)}\|^2.
+\]
+
+Hence:
+\[
+\frac{\Delta_1}{\alpha\theta^2\,\tfrac{n}{b}\,S} 
++ \frac{C\,\Delta_2}{\alpha\theta^2\,\tfrac{n}{b}\,S} 
+\leq \varepsilon^2.
+\]
+
+Required number of epochs $S$:
+\[
+S \sim \frac{\Delta_1}
+{\alpha \theta^2\,\tfrac{n}{b}\,\varepsilon^2} 
++ \frac{C\,\Delta_2}
+{\alpha\theta^2\,\tfrac{n}{b}\,\varepsilon^2}.
+\]
+
+Since each epoch uses $n/b$ steps of batch size $b$ 
+(i.e., $n$ oracle calls per epoch), 
+the total oracle complexity is 
+$N_{oracle} = S \cdot n$:
+\[
+\ N_{oracle} \sim 
+\frac{\Delta_1}
+{\alpha \theta^2\,\tfrac{1}{b}\,\varepsilon^2} 
++ \frac{C\,\Delta_2}
+{\alpha\theta^2\,\tfrac{1}{b}\,\varepsilon^2}.
+\]
+
+
+Substituting $\alpha\theta^2 = \frac{AB^2}{\delta}$ and 
+$C = \frac{16\mu B\delta(5/2 - 2B)}{2 + 68\mu B^2}$, 
+where $\mu \coloneqq \frac{en^2}{b^2}$ 
+and $A = \frac{1/4 - B - 34\mu B^2}{B(2 + 68\mu B^2)}$, 
+we obtain:
+\[
+N_{\text{oracle}} 
+= \frac{b\delta}{B(1/4 - B - 34\mu B^2)\,\varepsilon^2}
+\bigg[(2 + 68\mu B^2)\,\Delta_1 
++ 16\mu B\,\delta\,
+\Big(\tfrac{5}{2} - 2B\Big)\,\Delta_2\bigg].
+\]
+
+Since $1/4 - B - 34\mu B^2 > 0 = 1/4 - B - 34 \nicefrac{en^2}{b^2} B^2$ requires 
+$B = O(b/n)$, we search for the 
+step size in the form $B = c\,b/n$ with $c > 0$. 
+The optimal $c^*$ satisfies 
+\[
+c^* = \sqrt{\frac{-13 + \sqrt{185}}{272\,e}} 
+\approx 0.028.
+\]
+
+Then, the $N_{oracle}$ in terms of $\mathcal{O}(\cdot): $
+\begin{equation}
+\label{eq:oracle-complexity}
+N_{\text{oracle}} 
+= O\!\left(\frac{n\,\delta\,\Delta_1}{\varepsilon^2}\right) 
++ O\!\left(\frac{n^2\,\delta^2\,\Delta_2}
+{b\,\varepsilon^2}\right).
+\end{equation}
+
+% The first term is independent of the batch size $b$ 
+% and reflects the cost of variance reduction within 
+% each epoch. The second term captures the inter-epoch 
+% error inherited from the initial gradient estimator 
+% and decreases with $b$. 
+
+For $b = n^\beta$, 
+the oracle complexity becomes:
+\[
+N_{\text{oracle}} 
+= O\!\left(\frac{n\,\delta\,\Delta_1}{\varepsilon^2}\right) 
++ O\!\left(\frac{n^{2-\beta}\,\delta^2\,\Delta_2}
+{\varepsilon^2}\right).
+\]
+
+% The two terms balance when 
+% $b \sim \frac{n\,\delta\,\Delta_2}{\Delta_1}$, 
+% and the rate yields no further improvement 
+% beyond $b = n$, where it reduces to 
+% $O\!\big(\frac{n\,\delta\,\Delta}{\varepsilon^2}\big)$ 
+% with $\Delta = \max(\Delta_1,\, \delta\,\Delta_2)$.
+
+    
+\end{proof}
+
+
+
+\section{Technical appendices and supplementary material}
+Technical appendices with additional results, figures, graphs, and proofs may be submitted with the paper submission before the full submission deadline (see above). You can upload a ZIP file for videos or code, but do not upload a separate PDF file for the appendix. There is no page limit for the technical appendices. 
+
+Note: Think of the appendix as ``optional reading'' for reviewers. The paper must be able to stand alone without the appendix; for example, adding critical experiments that support the main claims to an appendix is inappropriate. 
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\end{document}

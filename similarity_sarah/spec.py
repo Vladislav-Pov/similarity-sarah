@@ -98,6 +98,7 @@ class RunSpec:
     batch_size_clients: int
     theta: float | None
     lr: float | None
+    weight_decay: float
     include_server: bool
     prox: ProxSpec | None
     data: DataSpec
@@ -206,6 +207,7 @@ def parse_run_spec(cfg: DictConfig) -> RunSpec:
         batch_size_clients=int(OmegaConf.select(algo, "batch_size_clients", default=1)),
         theta=None if theta is None else float(theta),
         lr=None if lr is None else float(lr),
+        weight_decay=float(OmegaConf.select(algo, "weight_decay", default=0.0)),
         include_server=bool(OmegaConf.select(algo, "include_server", default=True)),
         prox=parse_prox_spec(algo) if has_prox else None,
         data=_parse_data(cfg.data),

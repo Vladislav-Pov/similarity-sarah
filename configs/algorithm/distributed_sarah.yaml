@@ -1,11 +1,22 @@
 name: distributed_sarah
 
-# Defaults are aligned with configs/algorithm/batched_nfg_sarah.yaml so the
-# two algorithms can be compared head-to-head: same number of clients, same
-# B = 1 (one client per inner step → K = num_clients = 10 outer steps per
-# epoch), same epoch budget.  Data loaders, server fraction (in
-# configs/partition/uniform.yaml), val split etc. are inherited globally.
+# Distributed NoFullGrad SARAH baseline (Medyakov-style): plain SARAH with a
+# running-mean carry-over anchor (never a full gradient) and a plain gradient
+# step (no f1 prox). Communication-matched to NFG-SS — same two-gradient SARAH
+# footprint per inner step — so the gap isolates the value of the f1-proximal
+# step under second-order similarity.
+#
+# Defaults aligned with batched_nfg_sarah.yaml so the two compare head-to-head:
+# same num_clients, B = 1 (K = num_clients = 10 inner steps per epoch), same
+# epoch budget. Data loaders, server fraction (configs/partition/uniform.yaml),
+# val split etc. are inherited globally.
 num_clients: 10
 batch_size_clients: 1
 lr: 0.01
+weight_decay: 0.0          # plain step by default; tuned in search (1e-6 … 1e-3)
 num_epochs: 50
+
+# Server f1 is queried every inner step (weight 1/n) so the estimator targets
+# the same f = 1/n · Σ_i f_i that NFG-SS minimises. False ⇒ client-only average
+# (a different, unfair objective — keep True for head-to-head comparison).
+include_server: true

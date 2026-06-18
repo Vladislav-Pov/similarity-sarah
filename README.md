@@ -109,7 +109,7 @@ with `group.key=value`.
 
 | Group | Pick with | Options |
 |-------|-----------|---------|
-| `algorithm` | `algorithm=best` | `best` (winning NFG-SS), `batched_nfg_sarah`, `svrs`, `fedavg` |
+| `algorithm` | `algorithm=best` | `best` (winning NFG-SS), `batched_nfg_sarah`, `svrs`, `fedavg`, `distributed_sarah` |
 | `data` | `data=cifar10` | `cifar10`, `synthetic` |
 | `model` | `model=resnet18_32x32` | `resnet18_32x32`, `simple_cnn` |
 | `partition` | `partition=uniform` | `uniform` (`server_fraction` knob) |
@@ -168,6 +168,7 @@ are pruned early (`MedianPruner`/`HyperbandPruner`).
 | `nfg_ss` (`batched_nfg_sarah`) | `NFGSS` | the method — no full gradient, SARAH telescope, prox on `f1` |
 | `svrs` | `SVRS` | baseline; full-gradient anchor each epoch (Lin et al. 2023) |
 | `fedavg` | `FedAvg` | communication-matched baseline (McMahan et al. 2017) |
+| `distributed_sarah` | `DistributedSARAH` | baseline; NoFullGrad SARAH (running-mean carry-over, plain step, no `f1` prox) — comm-matched to NFG-SS |
 
 **Inexact prox solvers** (`algorithm.prox_solver`): `accvrs_batch_sgd` (best,
 the default in `best.yaml`), `sgd`, `adam`.
