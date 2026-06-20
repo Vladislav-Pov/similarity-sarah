@@ -1,11 +1,15 @@
 name: cifar10
 data_dir: ./data
 val_fraction: 0.2
-# Apply RandomCrop+HorizontalFlip on the server's *prox* loader only.
-# The server's *gradient* loader (used inside the SARAH recursion) and
-# all client loaders stay deterministic — the SARAH difference
-# ∇(f_i−f_1)(w_t) − ∇(f_i−f_1)(w_{t-1}) requires the same ∇f to be
-# well-defined at both iterates.  Augmentation inside the prox SGD/Adam
-# loop is harmless (the inner loop is already stochastic w.r.t. the
-# minibatch) and significantly improves CIFAR-10 generalisation.
+# augment_server: RandomCrop+HorizontalFlip on the server's *prox* loader only
+# (vestigial in the rewrite — not currently re-wired into the prox loader).
 augment_server: false
+
+# augment_train: RandomCrop+HorizontalFlip on the *node gradient* loaders
+# (server_grad + all clients).  SAFE for the SARAH telescope: section 11
+# materialises one minibatch per inner step and reuses it at w_t and w_{t-1}, so
+# the augmented sample is fixed within the step and the difference
+# ∇f_i(w_t;ξ) − ∇f_i(w_{t-1};ξ) telescopes; augmentation only varies the sample
+# across steps.  Big lever for CIFAR-10 val accuracy (val/test loaders stay
+# deterministic).  Default off so NFG-SS reference runs are unchanged.
+augment_train: false

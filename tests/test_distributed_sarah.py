@@ -46,6 +46,18 @@ def test_carryover_anchor_seeded_from_running_mean():
     assert compute_param_norm(algo.v_epoch) > 0.0
 
 
+def test_cosine_lr_schedule():
+    algo = DistributedSARAH(
+        lr=0.1, batch_size_clients=1, num_epochs=10,
+        lr_schedule="cosine", lr_min_factor=0.0,
+    )
+    assert algo._epoch_lr(0) == 0.1                # epoch 0 → lr
+    assert abs(algo._epoch_lr(9)) < 1e-6           # last epoch → lr * lr_min_factor
+    assert 0.0 < algo._epoch_lr(5) < 0.1           # decays in between
+    const = DistributedSARAH(lr=0.1, batch_size_clients=1, num_epochs=10)
+    assert const._epoch_lr(0) == const._epoch_lr(9) == 0.1  # constant is default
+
+
 def test_weight_decay_changes_trajectory():
     # Non-zero weight decay must move the iterate to a different point than wd=0.
     plain, plain_model = _algo(lr=0.05, weight_decay=0.0)

@@ -17,12 +17,24 @@ from dataclasses import dataclass
 
 import torch
 from omegaconf import OmegaConf
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset, Subset
 
 from similarity_sarah.core.repro import seed_worker
-from similarity_sarah.data.datasets import load_dataset, split_train_val
+from similarity_sarah.data.datasets import (
+    load_augmented_train,
+    load_dataset,
+    split_train_val,
+)
 from similarity_sarah.data.partition import create_partition
 from similarity_sarah.spec import RunSpec
+
+
+def _abs_indices(dataset: Dataset) -> list[int]:
+    """Resolve a (possibly nested) ``Subset`` to absolute indices into the base."""
+    if isinstance(dataset, Subset):
+        parent = _abs_indices(dataset.dataset)
+        return [parent[i] for i in dataset.indices]
+    return list(range(len(dataset)))  # type: ignore[arg-type]
 
 
 @dataclass
@@ -56,6 +68,18 @@ def build_federated_data(
     )
     partitions = create_partition(train, spec.num_clients + 1, part_cfg)
 
+    # Optional train augmentation on the *node gradient* loaders (server_grad +
+    # clients). Safe for the SARAH telescope: section 11 reuses the same
+    # materialised minibatch at w_t and w_{t-1}, so the augmented sample is fixed
+    # within an inner step; it only varies across steps. ``None`` ⇒ the dataset
+    # has no augmentation pipeline (e.g. synthetic), so fall back to deterministic.
+    aug_full = load_augmented_train(data_cfg) if spec.data.augment_train else None
+
+    def _node_ds(partition: Dataset) -> Dataset:
+        if aug_full is None:
+            return partition
+        return Subset(aug_full, _abs_indices(partition))
+
     rt = spec.runtime
     nw = rt.num_workers
     eval_bs = (
@@ -70,7 +94,7 @@ def build_federated_data(
     worker_init = seed_worker if generator is not None else None
 
     server_grad = DataLoader(
-        partitions[0], batch_size=rt.batch_size_server_grad, shuffle=True,
+        _node_ds(partitions[0]), batch_size=rt.batch_size_server_grad, shuffle=True,
         num_workers=nw, generator=generator, worker_init_fn=worker_init,
     )
     server_prox = DataLoader(
@@ -79,7 +103,7 @@ def build_federated_data(
     )
     clients = [
         DataLoader(
-            p, batch_size=rt.batch_size_data_clients, shuffle=True,
+            _node_ds(p), batch_size=rt.batch_size_data_clients, shuffle=True,
             num_workers=nw, generator=generator, worker_init_fn=worker_init,
         )
         for p in partitions[1:]

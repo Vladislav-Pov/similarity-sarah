@@ -169,6 +169,15 @@ class GridSearch:
             dist_grid = list(_grid(_coerce_dict(self.cfg.distributed_sarah)))
         else:
             dist_grid = [{}]
+        if (
+            "distributed_sarah_local_steps" in self.cfg
+            and self.cfg.distributed_sarah_local_steps is not None
+        ):
+            dist_local_grid = list(
+                _grid(_coerce_dict(self.cfg.distributed_sarah_local_steps))
+            )
+        else:
+            dist_local_grid = [{}]
         if "fedavg" in self.cfg and self.cfg.fedavg is not None:
             fedavg_grid = list(_grid(_coerce_dict(self.cfg.fedavg)))
         else:
@@ -178,14 +187,24 @@ class GridSearch:
             for batched_params in batched_grid:
                 for svrs_params in svrs_grid:
                     for dist_params in dist_grid:
-                        for fedavg_params in fedavg_grid:
-                            params: dict[str, object] = {}
-                            params.update(_join_params("shared", shared_params))
-                            params.update(_join_params("batched_nfg_sarah", batched_params))
-                            params.update(_join_params("svrs", svrs_params))
-                            params.update(_join_params("distributed_sarah", dist_params))
-                            params.update(_join_params("fedavg", fedavg_params))
-                            yield params
+                        for dist_local_params in dist_local_grid:
+                            for fedavg_params in fedavg_grid:
+                                params: dict[str, object] = {}
+                                params.update(_join_params("shared", shared_params))
+                                params.update(
+                                    _join_params("batched_nfg_sarah", batched_params)
+                                )
+                                params.update(_join_params("svrs", svrs_params))
+                                params.update(
+                                    _join_params("distributed_sarah", dist_params)
+                                )
+                                params.update(
+                                    _join_params(
+                                        "distributed_sarah_local_steps", dist_local_params
+                                    )
+                                )
+                                params.update(_join_params("fedavg", fedavg_params))
+                                yield params
 
     def run(
         self,
@@ -391,6 +410,7 @@ def _build_trial_cfgs(
     batched_over: dict[str, object] = {}
     svrs_over: dict[str, object] = {}
     dist_over: dict[str, object] = {}
+    dist_local_over: dict[str, object] = {}
     fedavg_over: dict[str, object] = {}
     for key, value in params.items():
         v = _to_python(value)
@@ -400,6 +420,8 @@ def _build_trial_cfgs(
             batched_over[key.split(".", 1)[1]] = v
         elif key.startswith("svrs."):
             svrs_over[key.split(".", 1)[1]] = v
+        elif key.startswith("distributed_sarah_local_steps."):
+            dist_local_over[key.split(".", 1)[1]] = v
         elif key.startswith("distributed_sarah."):
             dist_over[key.split(".", 1)[1]] = v
         elif key.startswith("fedavg."):
@@ -446,6 +468,24 @@ def _build_trial_cfgs(
         dist_cfg.num_epochs = min(int(dist_cfg.num_epochs), max_epochs)
         out["distributed_sarah"] = _override_algorithm(base_cfg, dist_cfg)
 
+    if (
+        "distributed_sarah_local_steps" in search_cfg
+        and search_cfg.distributed_sarah_local_steps is not None
+    ):
+        dist_local_cfg = OmegaConf.merge(
+            _algorithm_yaml_defaults("distributed_sarah_local_steps"),
+            OmegaConf.create(),
+        )
+        dist_local_cfg.name = "distributed_sarah_local_steps"
+        for k, v in shared.items():
+            dist_local_cfg[k] = v
+        for k, v in dist_local_over.items():
+            dist_local_cfg[k] = v
+        dist_local_cfg.num_epochs = min(int(dist_local_cfg.num_epochs), max_epochs)
+        out["distributed_sarah_local_steps"] = _override_algorithm(
+            base_cfg, dist_local_cfg
+        )
+
     if "fedavg" in search_cfg and search_cfg.fedavg is not None:
         fedavg_cfg = OmegaConf.merge(
             _algorithm_yaml_defaults("fedavg"), OmegaConf.create(),
@@ -461,8 +501,8 @@ def _build_trial_cfgs(
     if not out:
         raise ValueError(
             "Search config must contain at least one of 'batched_nfg_sarah', "
-            "'svrs', 'distributed_sarah' or 'fedavg' blocks (with parameters "
-            "to search)."
+            "'svrs', 'distributed_sarah', 'distributed_sarah_local_steps' or "
+            "'fedavg' blocks (with parameters to search)."
         )
 
     return out
@@ -503,6 +543,15 @@ def _sample_optuna_params(
         getattr(search_cfg, "distributed_sarah", None),
     ).items():
         full_name = f"distributed_sarah.{name}"
+        if _is_range_spec(value):
+            params[full_name] = _suggest_from_spec(trial, full_name, value)
+        else:
+            params[full_name] = trial.suggest_categorical(full_name, _as_list(value))
+
+    for name, value in _coerce_dict(
+        getattr(search_cfg, "distributed_sarah_local_steps", None),
+    ).items():
+        full_name = f"distributed_sarah_local_steps.{name}"
         if _is_range_spec(value):
             params[full_name] = _suggest_from_spec(trial, full_name, value)
         else:

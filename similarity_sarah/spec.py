@@ -56,6 +56,7 @@ class DataSpec:
     name: str
     val_fraction: float
     augment_server: bool
+    augment_train: bool
     n_train: int | None
     n_test: int | None
     data_dir: str | None
@@ -99,6 +100,8 @@ class RunSpec:
     theta: float | None
     lr: float | None
     weight_decay: float
+    lr_schedule: str
+    lr_min_factor: float
     include_server: bool
     prox: ProxSpec | None
     data: DataSpec
@@ -187,6 +190,7 @@ def _parse_data(data: DictConfig) -> DataSpec:
         name=str(data.name),
         val_fraction=float(OmegaConf.select(data, "val_fraction", default=0.0)),
         augment_server=bool(OmegaConf.select(data, "augment_server", default=False)),
+        augment_train=bool(OmegaConf.select(data, "augment_train", default=False)),
         n_train=None if n_train is None else int(n_train),
         n_test=None if n_test is None else int(n_test),
         data_dir=None if data_dir is None else str(data_dir),
@@ -208,6 +212,8 @@ def parse_run_spec(cfg: DictConfig) -> RunSpec:
         theta=None if theta is None else float(theta),
         lr=None if lr is None else float(lr),
         weight_decay=float(OmegaConf.select(algo, "weight_decay", default=0.0)),
+        lr_schedule=str(OmegaConf.select(algo, "lr_schedule", default="constant")).lower(),
+        lr_min_factor=float(OmegaConf.select(algo, "lr_min_factor", default=0.0)),
         include_server=bool(OmegaConf.select(algo, "include_server", default=True)),
         prox=parse_prox_spec(algo) if has_prox else None,
         data=_parse_data(cfg.data),

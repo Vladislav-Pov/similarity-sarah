@@ -1,0 +1,23 @@
+name: distributed_sarah_local_steps
+
+# NoFullGrad SARAH estimator (carry-over over grad f_i, no full gradient) with
+# an inexact f1-prox solved by local SGD steps — the prox here drops the linear
+# term ⟨v, ·⟩, so per the spec it is prox_{theta f1}(w_t) (v_t does not enter
+# the iterate; see the module docstring). Tuned in the same ranges as NFG-SS.
+num_clients: 10
+batch_size_clients: 1
+theta: 0.19007937872949687
+num_epochs: 100
+
+# Server queried every step (weight 1/n) so the estimator targets the same f.
+include_server: true
+
+# ── Inexact proximal solver (local steps on f1) — same knobs as NFG-SS ──
+prox_solver: sgd
+prox_num_steps: 86
+prox_lr: 0.007299057644263543
+prox_momentum: 0.0
+prox_weight_decay: 0.0
+prox_grad_clip: 2.0
+prox_eval_batches: 4
+prox_v_schedule: constant

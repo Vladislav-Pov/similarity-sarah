@@ -2,7 +2,7 @@
 # weight_decay (0 plus a log-spaced sweep).  8 × 4 = 32 configs.
 enabled: true
 method: grid
-max_epochs: 50
+max_epochs: 150
 num_trials: 100
 wandb_project: similarity-sarah
 wandb_group: "dist-grid-${now:%Y%m%d-%H%M%S}"

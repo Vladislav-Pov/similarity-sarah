@@ -2,7 +2,7 @@
 # knobs — lr (step size) and weight_decay — with TPE + median pruner.
 enabled: true
 method: optuna
-max_epochs: 50
+max_epochs: 150
 num_trials: 50
 wandb_project: distributed-sarah
 wandb_group: "dist-optuna-${now:%Y%m%d-%H%M%S}"
@@ -17,8 +17,8 @@ sampler:
 
 pruner:
   kind: median
-  n_startup_trials: 5
-  n_warmup_epochs: 20
+  n_startup_trials: 10
+  n_warmup_epochs: 50      # 150-epoch horizon: don't prune before cosine kicks in
   interval_epochs: 1
 
 shared:

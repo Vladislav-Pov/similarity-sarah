@@ -1,0 +1,17 @@
+# Grid search for distributed_sarah_local_steps only.
+# Same grid as grid_bnfg (theta, prox_lr, prox_num_steps, prox_v_schedule).
+enabled: true
+method: grid
+max_epochs: 100
+num_trials: 200
+wandb_project: sarah-nofullgrad-baseline-grid
+wandb_group: "distlocal-grid-${now:%Y%m%d-%H%M%S}"
+
+shared:
+  batch_size_clients: [1, 2, 5]
+
+distributed_sarah_local_steps:
+  theta:          [0.1, 0.2, 0.5, 1.0]
+  prox_lr:        [0.005, 0.012]
+  prox_num_steps: [80, 120]
+  prox_v_schedule: [constant, linear]

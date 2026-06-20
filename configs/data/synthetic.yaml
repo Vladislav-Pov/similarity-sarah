@@ -3,3 +3,6 @@ data_dir: ./data
 val_fraction: 0.1
 n_train: 500
 n_test: 100
+# No augmentation pipeline for synthetic data; the flag exists so
+# `data.augment_train=...` is a valid override here too (falls back to off).
+augment_train: false

@@ -13,10 +13,22 @@ name: distributed_sarah
 num_clients: 10
 batch_size_clients: 1
 lr: 0.01
-weight_decay: 0.0          # plain step by default; tuned in search (1e-6 … 1e-3)
-num_epochs: 50
+weight_decay: 0.0          # tuned in search (1e-6 … 1e-3)
+num_epochs: 150
+
+# Step-size schedule for the plain SARAH step:
+#   constant — fixed lr (the literal Medyakov transplant).
+#   cosine   — lr cosine-anneals from `lr` (epoch 0) to `lr * lr_min_factor`
+#              (last epoch). Stabilises long-horizon runs (kills the late
+#              val-loss spikes a constant step produces at 150+ epochs).
+lr_schedule: cosine
+lr_min_factor: 0.0         # final lr = lr * lr_min_factor (cosine only)
 
 # Server f1 is queried every inner step (weight 1/n) so the estimator targets
 # the same f = 1/n · Σ_i f_i that NFG-SS minimises. False ⇒ client-only average
 # (a different, unfair objective — keep True for head-to-head comparison).
 include_server: true
+
+# Train augmentation on the node gradient loaders is a data-level flag —
+# enable with `data.augment_train=true` (RandomCrop+HFlip on CIFAR-10; safe for
+# the SARAH telescope, see configs/data/cifar10.yaml).
