@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-# distsarah_local — optuna hyperparameter tuning.
-# Set the GPU via CUDA_VISIBLE_DEVICES; append any Hydra overrides as args.
+# distsarah — Optuna tuning over server_fraction (null / 0.2 / 0.35 / 0.5).
 cd "$(dirname "$0")/.."
-python main.py search=optuna_distsarah_local runtime.wandb.enabled=true "$@"
+
+CUDA_VISIBLE_DEVICES=0 python main.py search=optuna_distsarah data.augment_train=true runtime.wandb.enabled=true partition.server_fraction=null search.study_name=distsarah-sf-null
+
+CUDA_VISIBLE_DEVICES=1 python main.py search=optuna_distsarah data.augment_train=true runtime.wandb.enabled=true partition.server_fraction=0.2 search.study_name=distsarah-sf-0.2
+
+CUDA_VISIBLE_DEVICES=2 python main.py search=optuna_distsarah data.augment_train=true runtime.wandb.enabled=true partition.server_fraction=0.35 search.study_name=distsarah-sf-0.35
+
+CUDA_VISIBLE_DEVICES=3 python main.py search=optuna_distsarah data.augment_train=true runtime.wandb.enabled=true partition.server_fraction=0.5 search.study_name=distsarah-sf-0.5
