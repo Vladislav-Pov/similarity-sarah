@@ -100,6 +100,7 @@ class RunSpec:
     theta: float | None
     lr: float | None
     weight_decay: float
+    momentum: float
     lr_schedule: str
     lr_min_factor: float
     include_server: bool
@@ -212,6 +213,7 @@ def parse_run_spec(cfg: DictConfig) -> RunSpec:
         theta=None if theta is None else float(theta),
         lr=None if lr is None else float(lr),
         weight_decay=float(OmegaConf.select(algo, "weight_decay", default=0.0)),
+        momentum=float(OmegaConf.select(algo, "momentum", default=0.0)),
         lr_schedule=str(OmegaConf.select(algo, "lr_schedule", default="constant")).lower(),
         lr_min_factor=float(OmegaConf.select(algo, "lr_min_factor", default=0.0)),
         include_server=bool(OmegaConf.select(algo, "include_server", default=True)),

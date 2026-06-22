@@ -16,6 +16,12 @@ lr: 0.01
 weight_decay: 0.0          # tuned in search (1e-6 … 1e-3)
 num_epochs: 150
 
+# Heavy-ball momentum on the SARAH direction v_t:
+#   m_t = momentum * m_{t-1} + v_t ;  w_{t+1} = w_t - lr*(m_t + wd*w_t).
+# Buffer persists across epochs. 0.0 = plain step (literal Medyakov). Near-
+# essential for ResNet/CIFAR — without it the baseline severely underfits.
+momentum: 0.0
+
 # Step-size schedule for the plain SARAH step:
 #   constant — fixed lr (the literal Medyakov transplant).
 #   cosine   — lr cosine-anneals from `lr` (epoch 0) to `lr * lr_min_factor`

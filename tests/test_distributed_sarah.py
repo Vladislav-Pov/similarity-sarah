@@ -8,12 +8,18 @@ from similarity_sarah.core.params import compute_param_norm, get_params
 from tests.golden_oracle import build_fast_setup
 
 
-def _algo(lr: float, weight_decay: float = 0.0, include_server: bool = True):
+def _algo(
+    lr: float,
+    weight_decay: float = 0.0,
+    include_server: bool = True,
+    momentum: float = 0.0,
+):
     model, sg, sp, clients, loss_fn, device = build_fast_setup()
     algo = DistributedSARAH(
         lr=lr,
         batch_size_clients=1,
         weight_decay=weight_decay,
+        momentum=momentum,
         include_server=include_server,
     )
     algo.bind(AlgorithmCtx(model, sg, sp, clients, loss_fn, device))
@@ -44,6 +50,22 @@ def test_carryover_anchor_seeded_from_running_mean():
     assert compute_param_norm(algo.v_epoch) == 0.0
     algo.run_epoch(0)
     assert compute_param_norm(algo.v_epoch) > 0.0
+
+
+def test_momentum_accumulates_and_changes_trajectory():
+    # Epoch 0 only builds the carry-over anchor (v_0 = 0 ⇒ no movement); momentum
+    # engages from epoch 1, so run two epochs.
+    plain, plain_model = _algo(lr=0.05)            # momentum=0 (default)
+    plain.run_epoch(0)
+    plain.run_epoch(1)
+    assert compute_param_norm(plain.m) == 0.0      # buffer unused when momentum=0
+    mom, mom_model = _algo(lr=0.05, momentum=0.9)
+    mom.run_epoch(0)
+    mom.run_epoch(1)
+    assert compute_param_norm(mom.m) > 0.0         # buffer accumulates v_t
+    assert compute_param_norm(get_params(mom_model)) != compute_param_norm(
+        get_params(plain_model)
+    )
 
 
 def test_cosine_lr_schedule():

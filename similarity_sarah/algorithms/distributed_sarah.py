@@ -72,6 +72,7 @@ class DistributedSARAH(Algorithm):
         lr: float,
         batch_size_clients: int,
         weight_decay: float = 0.0,
+        momentum: float = 0.0,
         include_server: bool = True,
         num_epochs: int = 1,
         lr_schedule: str = "constant",
@@ -80,12 +81,14 @@ class DistributedSARAH(Algorithm):
         self.lr = float(lr)
         self.batch_size_clients = int(batch_size_clients)
         self.weight_decay = float(weight_decay)
+        self.momentum = float(momentum)
         self.include_server = bool(include_server)
         self.num_epochs = int(num_epochs)
         self.lr_schedule = str(lr_schedule).lower()
         self.lr_min_factor = float(lr_min_factor)
         self._ctx: AlgorithmCtx | None = None
         self.v_epoch: ParamList = []
+        self.m: ParamList = []  # heavy-ball momentum buffer (persists across epochs)
 
     @classmethod
     def from_spec(cls, spec: RunSpec) -> DistributedSARAH:
@@ -95,6 +98,7 @@ class DistributedSARAH(Algorithm):
             lr=spec.lr,
             batch_size_clients=spec.batch_size_clients,
             weight_decay=spec.weight_decay,
+            momentum=spec.momentum,
             include_server=spec.include_server,
             num_epochs=spec.num_epochs,
             lr_schedule=spec.lr_schedule,
@@ -115,6 +119,7 @@ class DistributedSARAH(Algorithm):
         self._ctx = ctx
         # v_0^{(0)} = 0 (no full gradient at the first epoch either).
         self.v_epoch = zeros_like_params(ctx.model)
+        self.m = zeros_like_params(ctx.model)
 
     # -- helpers --------------------------------------------------------------
     def _client_grad_sum(self, client_ids: list[int], xys: list) -> ParamList:
@@ -151,11 +156,22 @@ class DistributedSARAH(Algorithm):
         return g
 
     def _step(self, w: ParamList, v: ParamList, lr: float) -> None:
-        """w <- w - lr * (v + wd * w)  (plain SARAH step with weight decay)."""
+        """w <- w - lr*(d + wd*w).
+
+        Heavy-ball momentum on the SARAH direction: d = m_t with
+        m_t = momentum*m_{t-1} + v_t (the buffer persists across epochs).
+        momentum == 0 recovers the plain step d = v.
+        """
         ctx = self._ctx
         assert ctx is not None
         wd = self.weight_decay
-        set_params(ctx.model, [wi - lr * (vi + wd * wi) for wi, vi in zip(w, v)])
+        if self.momentum != 0.0:
+            scale_params_(self.m, self.momentum)
+            add_params_(self.m, v)  # m <- momentum*m + v
+            direction = self.m
+        else:
+            direction = v
+        set_params(ctx.model, [wi - lr * (di + wd * wi) for wi, di in zip(w, direction)])
 
     # -- one outer epoch ------------------------------------------------------
     def run_epoch(self, epoch: int) -> dict[str, float]:
