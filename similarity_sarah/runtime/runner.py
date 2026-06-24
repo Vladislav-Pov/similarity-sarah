@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import time
+from pathlib import Path
 from typing import Callable, Mapping
 
 from omegaconf import OmegaConf
@@ -253,6 +254,23 @@ class Runner:
         n_params = sum(p.numel() for p in self.model.parameters())
         logger.info("Model: %s  (%d parameters)", name, n_params)
 
+        init_ckpt = OmegaConf.select(self.cfg.runtime, "init_from_checkpoint", default=None)
+        if init_ckpt:
+            self._load_checkpoint(Path(init_ckpt))
+
+    def _save_checkpoint(self, path: Path, *, epoch: int, summary: dict) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save({"model_state_dict": self.model.state_dict(), "epoch": epoch, "summary": summary}, path)
+        logger.info("Checkpoint saved → %s", path)
+
+    def _load_checkpoint(self, path: Path) -> None:
+        payload = torch.load(path, map_location=self.device)
+        self.model.load_state_dict(payload["model_state_dict"])
+        logger.info(
+            "Loaded checkpoint from %s (epoch=%s, summary=%s)",
+            path, payload.get("epoch", "?"), payload.get("summary", {}),
+        )
+
     def _setup_task(self) -> None:
         self.task = ClassificationTask()
 
@@ -449,6 +467,7 @@ class Runner:
                     algo_name=self.cfg.algorithm.name,
                     run_name=self.cfg.algorithm.name,
                     global_step_offset=0,
+                    checkpoint_prefix=self.cfg.algorithm.name,
                 )
             finally:
                 if self._logger is not None:
@@ -513,6 +532,7 @@ class Runner:
                     run_name=f"{wandb_run_name}/{algo_name}",
                     global_step_offset=wandb_step_offset,
                     report_intermediate=report_intermediate,
+                    checkpoint_prefix=f"trial_{trial_id}_{algo_name}",
                 )
                 summaries[algo_name] = summary
                 wandb_step_offset += int(algo_cfg.algorithm.num_epochs)
@@ -534,9 +554,12 @@ class Runner:
         run_name: str,
         global_step_offset: int,
         report_intermediate: "Callable[[int, float], bool] | None" = None,
+        checkpoint_prefix: str | None = None,
     ) -> dict[str, float]:
         num_epochs: int = cfg.algorithm.num_epochs
         eval_every: int = cfg.runtime.eval_every
+        checkpoint_dir_raw = OmegaConf.select(self.cfg.runtime, "checkpoint_dir", default=None)
+        ckpt_dir = Path(checkpoint_dir_raw) if checkpoint_dir_raw else None
 
         logger.info("Starting training for %d epochs", num_epochs)
 
@@ -599,7 +622,14 @@ class Runner:
                     )
 
                 last_val = val_metrics
-                best_val_acc = max(best_val_acc, val_metrics.get("accuracy", -1))
+                val_acc = val_metrics.get("accuracy", -1)
+                if val_acc > best_val_acc and ckpt_dir and checkpoint_prefix:
+                    self._save_checkpoint(
+                        ckpt_dir / f"{checkpoint_prefix}_best.pt",
+                        epoch=epoch + 1,
+                        summary={"best_val_accuracy": float(val_acc)},
+                    )
+                best_val_acc = max(best_val_acc, val_acc)
                 best_val_loss = min(best_val_loss, val_metrics.get("loss", float("inf")))
 
                 if report_intermediate is not None:
@@ -623,6 +653,13 @@ class Runner:
 
         if self._logger is not None:
             self._logger.log_summary(algo=algo_name, metrics=summary)
+
+        if ckpt_dir and checkpoint_prefix:
+            self._save_checkpoint(
+                ckpt_dir / f"{checkpoint_prefix}_final.pt",
+                epoch=num_epochs,
+                summary=summary,
+            )
 
         return summary
 

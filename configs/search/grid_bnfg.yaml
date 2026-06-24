@@ -14,7 +14,7 @@ batched_nfg_sarah:
   prox_num_steps: [4]
   prox_lr: [null]
   prox_L1: [200.0]
-  prox_lr_factor: [0.15]
+  prox_lr_factor: [0.1]
   prox_momentum: [0.9]
   prox_weight_decay: [0.1]
   prox_grad_clip: [0.0]

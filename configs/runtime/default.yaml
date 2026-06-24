@@ -35,6 +35,18 @@ prox_lr_schedule:
   step_every: 30
   gamma: 0.1
 
+# ── Checkpointing ────────────────────────────────────────────────────
+# Set ``checkpoint_dir`` to a path to enable checkpoint saving.
+# Two files are written per training run:
+#   <checkpoint_dir>/<prefix>_best.pt   — best val-accuracy weights
+#   <checkpoint_dir>/<prefix>_final.pt  — weights at the end of training
+# The prefix is the algorithm name in standalone runs and
+# ``trial_<id>_<algo>`` in search runs.
+checkpoint_dir: null
+# Set to a .pt file path to warm-start the model from saved weights
+# before training begins (works in both standalone and search modes).
+init_from_checkpoint: null
+
 wandb:
   enabled: true
   project: amir_debug
