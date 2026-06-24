@@ -103,6 +103,7 @@ class RunSpec:
     momentum: float
     lr_schedule: str
     lr_min_factor: float
+    lr_t_max: int | None
     include_server: bool
     prox: ProxSpec | None
     data: DataSpec
@@ -204,6 +205,7 @@ def parse_run_spec(cfg: DictConfig) -> RunSpec:
     has_prox = OmegaConf.select(algo, "prox_num_steps", default=None) is not None
     theta = OmegaConf.select(algo, "theta", default=None)
     lr = OmegaConf.select(algo, "lr", default=None)
+    lr_t_max = OmegaConf.select(algo, "lr_t_max", default=None)
     return RunSpec(
         seed=int(cfg.seed),
         algorithm_name=str(algo.name),
@@ -216,6 +218,7 @@ def parse_run_spec(cfg: DictConfig) -> RunSpec:
         momentum=float(OmegaConf.select(algo, "momentum", default=0.0)),
         lr_schedule=str(OmegaConf.select(algo, "lr_schedule", default="constant")).lower(),
         lr_min_factor=float(OmegaConf.select(algo, "lr_min_factor", default=0.0)),
+        lr_t_max=None if lr_t_max is None else int(lr_t_max),
         include_server=bool(OmegaConf.select(algo, "include_server", default=True)),
         prox=parse_prox_spec(algo) if has_prox else None,
         data=_parse_data(cfg.data),

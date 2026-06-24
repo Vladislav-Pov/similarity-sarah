@@ -29,6 +29,10 @@ momentum: 0.0
 #              val-loss spikes a constant step produces at 150+ epochs).
 lr_schedule: cosine
 lr_min_factor: 0.0         # final lr = lr * lr_min_factor (cosine only)
+# Cosine horizon (T_max). null ⇒ num_epochs. When tuning at a SHORT num_epochs
+# but targeting a LONG final run, set this to the final length (e.g. 500) so the
+# tune's lr trajectory matches the long run's first epochs.
+lr_t_max: null
 
 # Server f1 is queried every inner step (weight 1/n) so the estimator targets
 # the same f = 1/n · Σ_i f_i that NFG-SS minimises. False ⇒ client-only average

@@ -1,5 +1,10 @@
-# Optuna search for distributed_sarah only.  Log-uniform sweep over the two
-# knobs — lr (step size) and weight_decay — with TPE + median pruner.
+# Optuna search for distributed_sarah — SHORT proxy tune (150 epochs) for a
+# 500-epoch final run. Cosine is calibrated to the final horizon (lr_t_max=500,
+# fixed) so each trial sees the first 150 epochs of the real 500-schedule.
+# Tunes lr (continuous, log) + momentum; weight_decay fixed at 1e-4 (it barely
+# shows at the underfit short horizon — re-check it on the 500-run). TPE +
+# median pruner. NOTE: trials do NOT log per-trial to W&B (search_runner uses a
+# no-op logger); read the best from the Optuna study.
 enabled: true
 method: optuna
 max_epochs: 150
@@ -30,10 +35,14 @@ distributed_sarah:
   lr:
     type: float
     low: 1.0e-4
-    high: 1.0
+    high: 5.0e-2
     log: true
-  weight_decay:
+  momentum:
+    type: categorical
+    choices: [0.9, 0.95, 0.99]
+  weight_decay: 
     type: float
     low: 1.0e-6
     high: 1.0e-3
     log: true
+  lr_t_max: 500            # fixed: cosine calibrated to the 500-epoch final run

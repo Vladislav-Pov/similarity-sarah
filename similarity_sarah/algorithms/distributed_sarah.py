@@ -77,6 +77,7 @@ class DistributedSARAH(Algorithm):
         num_epochs: int = 1,
         lr_schedule: str = "constant",
         lr_min_factor: float = 0.0,
+        lr_t_max: int | None = None,
     ) -> None:
         self.lr = float(lr)
         self.batch_size_clients = int(batch_size_clients)
@@ -86,6 +87,9 @@ class DistributedSARAH(Algorithm):
         self.num_epochs = int(num_epochs)
         self.lr_schedule = str(lr_schedule).lower()
         self.lr_min_factor = float(lr_min_factor)
+        # Cosine horizon (T_max); None ⇒ num_epochs. Set to the FINAL run length
+        # when tuning short, so the lr trajectory matches the long run.
+        self.lr_t_max = None if lr_t_max is None else int(lr_t_max)
         self._ctx: AlgorithmCtx | None = None
         self.v_epoch: ParamList = []
         self.m: ParamList = []  # heavy-ball momentum buffer (persists across epochs)
@@ -103,12 +107,19 @@ class DistributedSARAH(Algorithm):
             num_epochs=spec.num_epochs,
             lr_schedule=spec.lr_schedule,
             lr_min_factor=spec.lr_min_factor,
+            lr_t_max=spec.lr_t_max,
         )
 
     def _epoch_lr(self, epoch: int) -> float:
-        """Cosine-annealed step size: lr at epoch 0 → lr*lr_min_factor at the end."""
-        if self.lr_schedule == "cosine" and self.num_epochs > 1:
-            progress = min(1.0, epoch / (self.num_epochs - 1))
+        """Cosine-annealed step size over ``lr_t_max`` (default ``num_epochs``).
+
+        lr at epoch 0 → lr*lr_min_factor at epoch ``lr_t_max-1``. With
+        ``lr_t_max`` set to the final run length but a shorter ``num_epochs``,
+        the run only traverses the early (near-peak) part of the schedule.
+        """
+        t_max = self.lr_t_max if self.lr_t_max is not None else self.num_epochs
+        if self.lr_schedule == "cosine" and t_max > 1:
+            progress = min(1.0, epoch / (t_max - 1))
             factor = self.lr_min_factor + (1.0 - self.lr_min_factor) * 0.5 * (
                 1.0 + math.cos(math.pi * progress)
             )

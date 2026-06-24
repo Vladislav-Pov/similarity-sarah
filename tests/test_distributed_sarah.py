@@ -80,6 +80,21 @@ def test_cosine_lr_schedule():
     assert const._epoch_lr(0) == const._epoch_lr(9) == 0.1  # constant is default
 
 
+def test_lr_t_max_decouples_cosine_from_num_epochs():
+    # Train 150 epochs but cosine calibrated to 500: lr stays near peak.
+    short = DistributedSARAH(
+        lr=0.1, batch_size_clients=1, num_epochs=150,
+        lr_schedule="cosine", lr_t_max=500,
+    )
+    assert short._epoch_lr(0) == 0.1
+    assert short._epoch_lr(149) > 0.7 * 0.1     # ~0.79*peak at epoch 149 of a 500-cosine
+    # default (lr_t_max=None) anneals fully over num_epochs.
+    full = DistributedSARAH(
+        lr=0.1, batch_size_clients=1, num_epochs=150, lr_schedule="cosine",
+    )
+    assert abs(full._epoch_lr(149)) < 1e-6
+
+
 def test_weight_decay_changes_trajectory():
     # Non-zero weight decay must move the iterate to a different point than wd=0.
     plain, plain_model = _algo(lr=0.05, weight_decay=0.0)
