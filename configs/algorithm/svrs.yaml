@@ -10,22 +10,22 @@ num_clients: 10
 # distributed_sarah but is forced to 1 internally; values > 1 trigger a
 # warning and are ignored.
 batch_size_clients: 1
-theta: 0.5
-num_epochs: 100
+theta: 1
+num_epochs: 300
 
 # ── Inexact proximal solver ────────────────────────────────────────────
 # Same solver and same hyper-parameters as BNFG so any quality difference
 # is purely from the algorithmic change (recursive vs. anchor v).
 prox_solver: sgd
 prox_num_steps: 80
-prox_lr: 0.005
+prox_lr: 0.02
 prox_momentum: 0.0
 prox_weight_decay: 0.0
 # Global L2-norm clip on the inner-step direction (∇Φ).
 prox_grad_clip: 2.0
 # Number of fixed eval mini-batches for the prox-grad diagnostic (variance
 # of ‖∇Φ‖ estimate shrinks as 1/√eval_batches).
-prox_eval_batches: 8
+prox_eval_batches: 4
 # Schedule for the α coefficient in front of v inside the prox cell.
 # See batched_nfg_sarah.yaml for the explanation.
-prox_v_schedule: constant
+prox_v_schedule: linear

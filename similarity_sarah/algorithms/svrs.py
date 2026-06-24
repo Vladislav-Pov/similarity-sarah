@@ -145,7 +145,7 @@ class SVRS(BaseAlgorithm):
         """
         p = torch.tensor(1.0 / max(self.num_clients, 1))
         raw = torch.distributions.Geometric(probs=p).sample().item()
-        return int(raw) + 1
+        return min(int(raw) + 1, 4)
 
     def _sample_one_client(self) -> int:
         """``i_t ∼ Unif([num_clients])`` — a single uniform draw."""
@@ -163,6 +163,13 @@ class SVRS(BaseAlgorithm):
         logger.debug(
             "SVRS epoch %d: sampled T=%d (E[T]=%d)", epoch, T, self.num_clients,
         )
+
+        prox_first_norms: list[float] = []
+        prox_last_norms: list[float] = []
+        prox_ratios: list[float] = []
+        prox_obj_decreases: list[float] = []
+        prox_clip_fracs: list[float] = []
+        prox_inner_steps: list[float] = []
 
         for t in range(1, T + 1):
             cid = self._sample_one_client()
@@ -202,15 +209,36 @@ class SVRS(BaseAlgorithm):
                 vi.add_(dc - dr)
 
             set_params(self.model, w_curr)
-            self.prox_solver.step(
+            prox_diag = self.prox_solver.step(
                 self.model, v, self.theta,
                 self.server_prox_loader, self.loss_fn, self.device,
                 eval_loader=self.server_grad_loader,
             )
 
+            prox_first_norms.append(float(prox_diag["prox_grad_norm_first"]))
+            prox_last_norms.append(float(prox_diag["prox_grad_norm_last"]))
+            prox_ratios.append(float(prox_diag["prox_grad_norm_ratio"]))
+            prox_obj_decreases.append(float(prox_diag["prox_obj_decrease"]))
+            prox_clip_fracs.append(float(prox_diag.get("prox_clip_frac", 0.0)))
+            prox_inner_steps.append(float(prox_diag.get("prox_inner_steps", 0.0)))
+
             logger.debug(
-                "SVRS epoch %d step %d/%d  cid=%d  ‖v‖=%.3e",
+                "SVRS epoch %d step %d/%d  cid=%d  ‖v‖=%.3e  "
+                "prox_ratio=%.3f  clip_frac=%.2f",
                 epoch, t, T, cid, compute_param_norm(v),
+                prox_ratios[-1], prox_clip_fracs[-1],
             )
 
-        return {"epoch": float(epoch), "inner_steps": float(T)}
+        def _avg(xs: list[float]) -> float:
+            return float(sum(xs) / len(xs)) if xs else 0.0
+
+        return {
+            "epoch": float(epoch),
+            "inner_steps": float(T),
+            "prox_grad_norm_first_mean": _avg(prox_first_norms),
+            "prox_grad_norm_last_mean": _avg(prox_last_norms),
+            "prox_grad_norm_ratio_mean": _avg(prox_ratios),
+            "prox_obj_decrease_mean": _avg(prox_obj_decreases),
+            "prox_clip_frac_mean": _avg(prox_clip_fracs),
+            "prox_inner_steps_mean": _avg(prox_inner_steps),
+        }

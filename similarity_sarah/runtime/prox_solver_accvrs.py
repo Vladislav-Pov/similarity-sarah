@@ -235,7 +235,7 @@ class _AccvrsBatchBase(ProxSolver):
                     # Polyak momentum on the direction (their default 0.9).
                     if self.momentum > 0 and prev_direction is not None:
                         d = [
-                            self.momentum * pd + (1.0 - self.momentum) * di
+                            self.momentum * pd + di
                             for pd, di in zip(prev_direction, d)
                         ]
                     prev_direction = [di.clone() for di in d]
@@ -361,3 +361,146 @@ class AccvrsBatchAdamProx(_AccvrsBatchBase):
             if self.weight_decay > 0:
                 p.data.mul_(decay_mult)
             p.data.addcdiv_(m_hat, v_hat.sqrt().add_(self.eps), value=-lr)
+
+
+class AccXtraGradBatchSGDProx(ProxSolver):
+    """Batch_SGD argmin from AccXtraGrad (direct port).
+
+    Mirrors the ``optimizer_name == "Batch_SGD"`` branch from AccXtraGrad's
+    ``argmin``: warm-start at ``z = w_outer − θ v``, then run SGD on
+
+        d = (w − w_outer) + θ · ∇f₁(w),
+
+    with EMA-style momentum, periodic LR decay, and early-stop on
+    ``‖d‖ / ‖d_first‖``.  This omits the linear ``θ v`` term inside the
+    direction — consistent with the AccXtraGrad snippet.
+    """
+
+    def __init__(
+        self,
+        num_steps: int,
+        lr: float | None = None,
+        L1: float = 200.0,
+        lr_factor: float = 1.0,
+        momentum: float = 0.9,
+        inner_decay_factor: float = 0.9,
+        inner_decay_period: int | None = None,
+        early_stop_ratio: float = 1e-3,
+        eval_batches: int = 1,
+    ) -> None:
+        self.num_steps = int(num_steps)
+        self.lr = None if lr is None else float(lr)
+        self.L1 = float(L1)
+        self.lr_factor = float(lr_factor)
+        self.momentum = float(momentum)
+        self.inner_decay_factor = float(inner_decay_factor)
+        self.inner_decay_period = (
+            int(inner_decay_period) if inner_decay_period is not None else None
+        )
+        self.early_stop_ratio = float(early_stop_ratio)
+        self.eval_batches = max(1, int(eval_batches))
+
+    def _resolve_lr(self, theta: float) -> float:
+        if self.lr is not None:
+            return self.lr * self.lr_factor
+        L = 1.0 + theta * self.L1
+        return (1.0 / (2.0 * L)) * self.lr_factor
+
+    def step(
+        self,
+        model: nn.Module,
+        v: ParamList,
+        theta: float,
+        server_loader: DataLoader,
+        loss_fn: nn.Module,
+        device: torch.device,
+        eval_loader: DataLoader | None = None,
+    ) -> Mapping[str, float]:
+        w_outer = get_params(model)
+        z = [wi - theta * vi for wi, vi in zip(w_outer, v)]
+        set_params(model, z)
+        params = list(model.parameters())
+
+        eval_xys = _fresh_eval_xys(eval_loader, server_loader, self.eval_batches)
+        first_grad_norm, first_obj = _prox_diag_on_batches(
+            params, z, theta, model, loss_fn, eval_xys, device,
+        )
+
+        try:
+            num_batches_per_epoch = len(server_loader)
+        except TypeError:
+            num_batches_per_epoch = 1
+        decay_period = (
+            self.inner_decay_period
+            if self.inner_decay_period is not None
+            else max(1, num_batches_per_epoch // 5)
+        )
+
+        lr = self._resolve_lr(theta)
+        prev_direction: list[torch.Tensor] | None = None
+        start_norm_inner = 0.0
+        last_norm_inner = 0.0
+        total_steps = 0
+        broken = False
+
+        for _ in range(self.num_steps):
+            if broken:
+                break
+            server_iter = iter(server_loader)
+            for _ in range(num_batches_per_epoch):
+                try:
+                    x, y = next(server_iter)
+                except StopIteration:
+                    break
+
+                x, y = x.to(device), y.to(device)
+                output = model(x)
+                loss = loss_fn(output, y)
+                grads = torch.autograd.grad(loss, params)
+
+                with torch.no_grad():
+                    direction = [
+                        (p.data - wo) + theta * g
+                        for p, wo, g in zip(params, w_outer, grads)
+                    ]
+                    if self.momentum > 0 and prev_direction is not None:
+                        direction = [
+                            self.momentum * pd + (1.0 - self.momentum) * di
+                            for pd, di in zip(prev_direction, direction)
+                        ]
+                    prev_direction = [di.clone() for di in direction]
+
+                    if total_steps == 0:
+                        start_norm_inner = _direction_norm(direction)
+
+                    for p, d in zip(params, direction):
+                        p.data.add_(d, alpha=-lr)
+
+                total_steps += 1
+
+                if total_steps % decay_period == 0:
+                    last_norm_inner = _direction_norm(direction)
+                    lr *= self.inner_decay_factor
+                    ratio = last_norm_inner / max(start_norm_inner, 1e-12)
+                    if ratio < self.early_stop_ratio:
+                        broken = True
+                        break
+
+        if last_norm_inner == 0.0 and prev_direction is not None:
+            last_norm_inner = _direction_norm(prev_direction)
+        last_frac_inner = last_norm_inner / max(start_norm_inner, 1e-12)
+
+        last_grad_norm, last_obj = _prox_diag_on_batches(
+            params, z, theta, model, loss_fn, eval_xys, device,
+        )
+
+        payload = _build_diag_payload(
+            first_grad_norm, first_obj,
+            last_grad_norm, last_obj,
+            self.num_steps,
+        )
+        payload["prox_inner_steps"] = float(total_steps)
+        payload["prox_inner_norm_first"] = float(start_norm_inner)
+        payload["prox_inner_norm_last"] = float(last_norm_inner)
+        payload["prox_inner_norm_ratio"] = float(last_frac_inner)
+        return payload

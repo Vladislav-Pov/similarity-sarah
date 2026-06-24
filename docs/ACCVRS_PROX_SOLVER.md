@@ -114,7 +114,7 @@ prox_solver: accvrs_batch_sgd     # или accvrs_batch_adam
 prox_num_steps: 4                  # ← теперь это *эпохи* серверного лоадера
 prox_lr: null                      # null = auto: γ₀ = 1/(2L)·lr_factor
 prox_L1: 200.0                     # Lipschitz ∇f_1 (для auto-LR)
-prox_lr_factor: 1.0                # внешний множитель на γ₀
+prox_lr_factor: 1.0               # внешний множитель на γ₀
 prox_momentum: 0.9                 # Polyak на direction
 prox_weight_decay: 0.1             # их `argmin_lambd`
 prox_grad_clip: 0.0                # per-element clamp; 0 = off
@@ -230,6 +230,28 @@ prox_weight_decay: 0.1
 **Плюс** AccVRS-специфичные:
 - `prox_inner_norm_first / _last / _ratio` — их «нативная» метрика (норма direction'а в самом начале/конце inner-loop'а, считается на текущем training batch'е, поэтому шумнее)
 - `prox_inner_steps` — реальное число inner-итераций (с учётом early-stop)
+
+## 8) AccXtraGrad Batch_SGD (argmin-ветка)
+
+Если нужен буквальный порт `argmin` из класса `AccXtraGrad` (ветка
+`optimizer_name == "Batch_SGD"`), можно выбрать новый прокс-солвер:
+
+```yaml
+prox_solver: accxtragrad_batch_sgd
+prox_num_steps: 4
+prox_lr: null
+prox_L1: 200.0
+prox_lr_factor: 1.0
+prox_momentum: 0.9
+prox_inner_decay_factor: 0.9
+prox_inner_decay_period: null
+prox_inner_early_stop_ratio: 0.001
+```
+
+Он делает warm-start в `z = w_outer − θ·v`, затем SGD по
+`d = (w − w_outer) + θ·∇f₁(w)` с EMA-моментумом и таким же decay/early-stop
+как в AccXtraGrad. Линейный член `θ·v` в направлении **не** добавляется —
+это соответствует оригинальному фрагменту кода.
 
 Сравнивай разные solver'ы по `prox_grad_norm_ratio_mean` и `val/accuracy` — это устойчивые метрики через все 4 семейства (sgd, adam, accvrs_batch_sgd, accvrs_batch_adam).
 
