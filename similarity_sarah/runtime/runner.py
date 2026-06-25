@@ -260,7 +260,19 @@ class Runner:
 
     def _save_checkpoint(self, path: Path, *, epoch: int, summary: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({"model_state_dict": self.model.state_dict(), "epoch": epoch, "summary": summary}, path)
+        theta = float(OmegaConf.select(self.cfg.algorithm, "theta", default=0.0))
+        payload: dict = {
+            "model_state_dict": self.model.state_dict(),
+            "epoch": epoch,
+            "summary": summary,
+            "theta": theta,
+        }
+        v_epoch = getattr(self.algorithm, "v_epoch", None)
+        if v_epoch:
+            payload["v_epoch"] = [vi.cpu() for vi in v_epoch]
+            v_norm = float(sum(vi.square().sum().item() for vi in v_epoch) ** 0.5)
+            payload["v_epoch_norm"] = v_norm
+        torch.save(payload, path)
         logger.info("Checkpoint saved → %s", path)
 
     def _load_checkpoint(self, path: Path) -> None:
@@ -270,6 +282,35 @@ class Runner:
             "Loaded checkpoint from %s (epoch=%s, summary=%s)",
             path, payload.get("epoch", "?"), payload.get("summary", {}),
         )
+
+    def _load_v_epoch_if_set(self) -> None:
+        """Load v_epoch from checkpoint into the algorithm after _setup_algorithm."""
+        if not bool(OmegaConf.select(self.cfg.runtime, "load_v_epoch", default=False)):
+            return
+        init_ckpt = OmegaConf.select(self.cfg.runtime, "init_from_checkpoint", default=None)
+        if not init_ckpt:
+            return
+        payload = torch.load(Path(init_ckpt), map_location=self.device)
+        v_saved = payload.get("v_epoch")
+        if not v_saved:
+            logger.warning("load_v_epoch=true but checkpoint has no v_epoch; skipping.")
+            return
+        if not hasattr(self.algorithm, "v_epoch") or not self.algorithm.v_epoch:
+            logger.warning("load_v_epoch=true but algorithm has no v_epoch; skipping.")
+            return
+
+        # Optional theta rescaling: v encodes gradient diffs, warm-start is
+        # z = w_outer - theta*v.  If theta changed, rescale so the warm-start
+        # shift stays the same magnitude as during the saved run.
+        theta_saved = float(payload.get("theta", 0.0))
+        theta_now = float(OmegaConf.select(self.cfg.algorithm, "theta", default=0.0))
+        scale = (theta_saved / theta_now) if (theta_saved > 0 and theta_now > 0) else 1.0
+        if abs(scale - 1.0) > 0.01:
+            logger.info("load_v_epoch: rescaling by %.4f (theta %.3f → %.3f)", scale, theta_saved, theta_now)
+
+        self.algorithm.v_epoch = [vi.to(self.device).mul(scale) for vi in v_saved]
+        v_norm = float(sum(vi.square().sum().item() for vi in self.algorithm.v_epoch) ** 0.5)
+        logger.info("Loaded v_epoch from checkpoint (norm=%.4f)", v_norm)
 
     def _setup_task(self) -> None:
         self.task = ClassificationTask()
@@ -460,6 +501,7 @@ class Runner:
         if not getattr(search_cfg, "enabled", False):
             self._setup_model()
             self._setup_algorithm(self.cfg)
+            self._load_v_epoch_if_set()
             self._logger = self._maybe_create_logger(self.cfg, run_name=None)
             try:
                 self._run_training(
@@ -526,6 +568,7 @@ class Runner:
             for algo_name, algo_cfg in trial_cfgs.items():
                 self._setup_model()
                 self._setup_algorithm(algo_cfg)
+                self._load_v_epoch_if_set()
                 summary = self._run_training(
                     algo_cfg,
                     algo_name=algo_name,

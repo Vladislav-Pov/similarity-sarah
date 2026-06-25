@@ -46,6 +46,13 @@ checkpoint_dir: null
 # Set to a .pt file path to warm-start the model from saved weights
 # before training begins (works in both standalone and search modes).
 init_from_checkpoint: null
+# Also restore v_epoch (SARAH carry-over) from the checkpoint.
+# Avoids the epoch-2 divergence that occurs when v_epoch starts from zero
+# while the model is already in a good region (0.8+ accuracy).
+# If theta changed between runs, v_epoch is rescaled automatically so the
+# warm-start shift z = w_outer - theta*v keeps the same magnitude.
+# Only takes effect when init_from_checkpoint is set.
+load_v_epoch: false
 
 wandb:
   enabled: true
