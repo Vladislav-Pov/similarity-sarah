@@ -720,6 +720,13 @@ class Runner:
 
         logger.info("=== Phase 2 starts at epoch %d ===", epoch + 1)
 
+        # Reset the SARAH carry-over so stale phase-1 gradient estimates
+        # don't destabilise the first phase-2 prox step.
+        v = getattr(self.algorithm, "v_epoch", None)
+        if v:
+            self.algorithm.v_epoch = [torch.zeros_like(vi) for vi in v]
+            logger.info("  v_epoch reset to zero")
+
         prox = getattr(self.algorithm, "prox_solver", None)
         _PROX_ATTRS = {
             "phase2_prox_lr_factor": ("lr_factor", float),
