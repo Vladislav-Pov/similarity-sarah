@@ -1,6 +1,6 @@
 enabled: true
 method: grid
-max_epochs: 100
+max_epochs: 35
 num_trials: 200        # safety cap (теперь комбинаций больше)
 wandb_project: similarity-sarah
 wandb_group: "bnfg-grid-${now:%Y%m%d-%H%M%S}"
