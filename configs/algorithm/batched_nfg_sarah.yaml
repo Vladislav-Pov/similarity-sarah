@@ -111,3 +111,14 @@ prox_inner_decay_factor: 0.9
 prox_inner_decay_period: null     # null ⇒ len(server_loader) // 5
 prox_inner_early_stop_ratio: 0.001
 prox_include_linear_term: false
+
+# ── Two-phase fine-tuning ─────────────────────────────────────────────
+# At ``phase2_start_epoch`` the solver switches to finer parameters
+# without resetting model weights.  null = disabled.
+phase2_start_epoch: null
+phase2_prox_lr_factor: null
+phase2_prox_num_steps: null
+phase2_prox_weight_decay: null
+phase2_prox_momentum: null
+phase2_prox_inner_decay_factor: null
+phase2_prox_inner_early_stop_ratio: null

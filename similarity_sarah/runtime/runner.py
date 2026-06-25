@@ -572,6 +572,7 @@ class Runner:
 
         for epoch in range(num_epochs):
             self._apply_prox_lr_schedule(base_prox_lr, sched_cfg, epoch, num_epochs)
+            self._maybe_enter_phase2(cfg, epoch)
 
             t0 = time.perf_counter()
             metrics = dict(self.algorithm.run_epoch(epoch))
@@ -668,13 +669,13 @@ class Runner:
     # ------------------------------------------------------------------
     def _initial_prox_lr(self) -> float | None:
         prox = getattr(self.algorithm, "prox_solver", None)
-        if prox is None or not hasattr(prox, "lr"):
+        if prox is None or not hasattr(prox, "lr") or prox.lr is None:
             return None
         return float(prox.lr)
 
     def _current_prox_lr(self) -> float | None:
         prox = getattr(self.algorithm, "prox_solver", None)
-        if prox is None or not hasattr(prox, "lr"):
+        if prox is None or not hasattr(prox, "lr") or prox.lr is None:
             return None
         return float(prox.lr)
 
@@ -709,6 +710,31 @@ class Runner:
             prox.lr = base_lr * (gamma ** k)
             return
         logger.warning("Unknown prox_lr_schedule.kind=%s; ignoring.", kind)
+
+    def _maybe_enter_phase2(self, cfg: DictConfig, epoch: int) -> None:
+        """Switch to fine-tuning parameters at ``phase2_start_epoch``."""
+        algo_cfg = cfg.algorithm
+        phase2_start = OmegaConf.select(algo_cfg, "phase2_start_epoch", default=None)
+        if phase2_start is None or epoch != int(phase2_start):
+            return
+
+        logger.info("=== Phase 2 starts at epoch %d ===", epoch + 1)
+
+        prox = getattr(self.algorithm, "prox_solver", None)
+        _PROX_ATTRS = {
+            "phase2_prox_lr_factor": ("lr_factor", float),
+            "phase2_prox_num_steps": ("num_steps", int),
+            "phase2_prox_weight_decay": ("weight_decay", float),
+            "phase2_prox_momentum": ("momentum", float),
+            "phase2_prox_inner_decay_factor": ("inner_decay_factor", float),
+            "phase2_prox_inner_early_stop_ratio": ("early_stop_ratio", float),
+        }
+        if prox is not None:
+            for cfg_key, (attr, cast) in _PROX_ATTRS.items():
+                val = OmegaConf.select(algo_cfg, cfg_key, default=None)
+                if val is not None and hasattr(prox, attr):
+                    setattr(prox, attr, cast(val))
+                    logger.info("  prox.%s → %s", attr, val)
 
     # ------------------------------------------------------------------
     # W&B logging helpers
