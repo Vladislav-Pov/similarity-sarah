@@ -1,0 +1,91 @@
+# Optuna + Hyperband search for batched_nfg_sarah (AccVRS Batch_SGD prox).
+#
+# Searches the FOUR knobs that actually drive convergence with NoFullGrad,
+# along the auto-derived-lr path:
+#       auto_lr = 1 / (2*(1 + theta*prox_L1)) * prox_lr_factor
+# so theta / prox_L1 / prox_lr_factor are coupled — we search them jointly and
+# leave prox_lr = null (inherited from the algorithm default) so the auto path
+# stays active.
+#
+# Hyperband turns each trial into the "10 epochs then decide" ladder automatically:
+#   rung 0 = 10 epochs (min_resource) → survivors promoted up to max_epochs.
+# Bad configs are pruned at the first 10-epoch rung; good ones keep training.
+#
+# max_epochs is the ONLY epoch knob: the trial length AND the Hyperband top
+# rung both follow it (pruner.max_resource defaults to max_epochs).  The sweep
+# only RANKS configs — it does not need to reach the plateau, so keep this
+# short (25-30).  Final accuracy is measured later in a long phase-B run.
+#
+# Resumable: the study is persisted at optuna_studies/<study_name>.db.
+# Re-launch with the SAME search.study_name to continue a sweep after a crash.
+#
+# RUN (augmentation ON — this is the single biggest lever for 0.8 -> 0.9):
+#   python main.py search=optuna_bnfg_v2 data.augment_server=true \
+#       runtime.checkpoint_dir=checkpoints/sweep1 \
+#       search.study_name=bnfg-sweep1
+enabled: true
+method: optuna
+max_epochs: 30        # triage budget: ranks configs, not converges them
+num_trials: 40
+wandb_project: similarity-sarah
+wandb_group: "bnfg-optuna-v2-${now:%Y%m%d-%H%M%S}"
+
+# Persistent SQLite study. Set a stable name to RESUME the same sweep.
+storage_dir: optuna_studies
+study_name: null
+
+sampler:
+  kind: tpe
+  seed: 0
+
+# Hyperband = successive halving across the 10-epoch rungs.
+# max_resource is omitted on purpose → it auto-follows max_epochs above,
+# so there is a single epoch knob to change.
+pruner:
+  kind: hyperband
+  min_resource: 10      # first rung = 10 epochs (the main prune point)
+
+shared:
+  batch_size_clients:
+    type: categorical
+    choices: [1]
+
+batched_nfg_sarah:
+  # Keep the AccVRS Batch_SGD solver and the auto-lr path (prox_lr stays null).
+  prox_solver:
+    type: categorical
+    choices: [accvrs_batch_sgd]
+
+  # ── The 4 coupled knobs ────────────────────────────────────────────
+  theta:
+    type: float
+    low: 0.1
+    high: 0.4
+    log: true
+  prox_L1:
+    type: float
+    low: 120.0
+    high: 450.0
+    log: true
+  prox_lr_factor:
+    type: float
+    low: 0.03
+    high: 0.18
+    log: true
+  prox_momentum:
+    type: categorical
+    choices: [0.7, 0.9]
+
+  # ── Secondary knobs (small discrete sets) ──────────────────────────
+  prox_num_steps:
+    type: categorical
+    choices: [4, 5]
+  prox_weight_decay:
+    type: categorical
+    choices: [0.05, 0.1]
+
+  # Stability anchors: per-element clip almost never fires when well-conditioned,
+  # but caps a single bad minibatch from triggering the divergence cascade.
+  prox_grad_clip:
+    type: categorical
+    choices: [0.0, 1.0]

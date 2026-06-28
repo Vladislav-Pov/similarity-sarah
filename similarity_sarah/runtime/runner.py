@@ -606,7 +606,7 @@ class Runner:
 
         logger.info("Starting training for %d epochs", num_epochs)
 
-        base_prox_lr = self._initial_prox_lr()
+        self._prox_sched_attr, base_prox_lr = self._prox_schedule_knob()
         sched_cfg = OmegaConf.select(cfg.runtime, "prox_lr_schedule", default=None)
 
         best_val_acc = -float("inf")
@@ -710,17 +710,39 @@ class Runner:
     # ------------------------------------------------------------------
     # Prox LR schedule
     # ------------------------------------------------------------------
-    def _initial_prox_lr(self) -> float | None:
+    def _prox_schedule_knob(self) -> "tuple[str | None, float | None]":
+        """Pick the schedulable lr knob and its base value.
+
+        AccVRS solvers expose ``lr_factor`` — the right thing to schedule
+        because the effective inner lr is ``(lr or 1/(2L)) * lr_factor`` on
+        *both* the explicit-``prox_lr`` and the auto-derive (``prox_lr: null``)
+        paths.  InexactProx* solvers expose only ``lr``.  Scaling whichever
+        exists makes cosine/step schedules work regardless of ``prox_lr``.
+        Returns ``(attr_name, base)`` or ``(None, None)``.
+        """
         prox = getattr(self.algorithm, "prox_solver", None)
-        if prox is None or not hasattr(prox, "lr") or prox.lr is None:
-            return None
-        return float(prox.lr)
+        if prox is None:
+            return None, None
+        if getattr(prox, "lr_factor", None) is not None:
+            return "lr_factor", float(prox.lr_factor)
+        if getattr(prox, "lr", None) is not None:
+            return "lr", float(prox.lr)
+        return None, None
 
     def _current_prox_lr(self) -> float | None:
+        """Effective inner lr for logging (resolves the auto-derive path)."""
         prox = getattr(self.algorithm, "prox_solver", None)
-        if prox is None or not hasattr(prox, "lr") or prox.lr is None:
+        if prox is None:
             return None
-        return float(prox.lr)
+        resolve = getattr(prox, "_resolve_lr", None)
+        if callable(resolve):
+            theta = float(OmegaConf.select(self.cfg.algorithm, "theta", default=0.0))
+            try:
+                return float(resolve(theta))
+            except Exception:
+                pass
+        lr = getattr(prox, "lr", None)
+        return float(lr) if lr is not None else None
 
     def _apply_prox_lr_schedule(
         self,
@@ -732,25 +754,26 @@ class Runner:
         if base_lr is None or sched_cfg is None:
             return
         kind = str(sched_cfg.get("kind", "constant")).lower()
-        prox = getattr(self.algorithm, "prox_solver", None)
-        if prox is None or not hasattr(prox, "lr"):
-            return
-
         if kind == "constant":
             return
+        prox = getattr(self.algorithm, "prox_solver", None)
+        attr = getattr(self, "_prox_sched_attr", None)
+        if prox is None or attr is None or not hasattr(prox, attr):
+            return
+
         if kind == "cosine":
             t_max = int(sched_cfg.get("t_max", num_epochs)) or 1
             min_factor = float(sched_cfg.get("min_factor", 0.0))
             t = min(epoch, t_max)
             cos = 0.5 * (1.0 + math.cos(math.pi * t / t_max))
             factor = min_factor + (1.0 - min_factor) * cos
-            prox.lr = base_lr * factor
+            setattr(prox, attr, base_lr * factor)
             return
         if kind == "step":
             step_every = int(sched_cfg.get("step_every", max(num_epochs // 3, 1)))
             gamma = float(sched_cfg.get("gamma", 0.1))
             k = epoch // max(step_every, 1)
-            prox.lr = base_lr * (gamma ** k)
+            setattr(prox, attr, base_lr * (gamma ** k))
             return
         logger.warning("Unknown prox_lr_schedule.kind=%s; ignoring.", kind)
 
