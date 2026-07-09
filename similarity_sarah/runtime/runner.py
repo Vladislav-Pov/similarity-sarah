@@ -260,7 +260,11 @@ class Runner:
 
     def _save_checkpoint(self, path: Path, *, epoch: int, summary: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        theta = float(OmegaConf.select(self.cfg.algorithm, "theta", default=0.0))
+        # Read theta from the live algorithm (the active trial's value), NOT
+        # self.cfg.algorithm (the base config) — in search runs those differ and
+        # the checkpoint would otherwise store the base theta, not the one the
+        # model was actually trained with.
+        theta = float(getattr(self.algorithm, "theta", 0.0))
         payload: dict = {
             "model_state_dict": self.model.state_dict(),
             "epoch": epoch,
@@ -299,18 +303,30 @@ class Runner:
             logger.warning("load_v_epoch=true but algorithm has no v_epoch; skipping.")
             return
 
-        # Optional theta rescaling: v encodes gradient diffs, warm-start is
-        # z = w_outer - theta*v.  If theta changed, rescale so the warm-start
-        # shift stays the same magnitude as during the saved run.
-        theta_saved = float(payload.get("theta", 0.0))
-        theta_now = float(OmegaConf.select(self.cfg.algorithm, "theta", default=0.0))
-        scale = (theta_saved / theta_now) if (theta_saved > 0 and theta_now > 0) else 1.0
-        if abs(scale - 1.0) > 0.01:
-            logger.info("load_v_epoch: rescaling by %.4f (theta %.3f → %.3f)", scale, theta_saved, theta_now)
-
-        self.algorithm.v_epoch = [vi.to(self.device).mul(scale) for vi in v_saved]
-        v_norm = float(sum(vi.square().sum().item() for vi in self.algorithm.v_epoch) ** 0.5)
-        logger.info("Loaded v_epoch from checkpoint (norm=%.4f)", v_norm)
+        # v_epoch is a GRADIENT estimate  v ≈ (1/n) Σ ∇(f_i − f₁)(w):  a function
+        # of the model weights and data ONLY.  It does NOT depend on theta /
+        # lr_factor / L1 (the run_epoch recursion builds it with no such
+        # coefficients), so it is loaded VERBATIM.
+        #
+        # NOTE: a previous version rescaled v by θ_saved/θ_now to keep the
+        # warm-start shift z = w − θv constant across a theta change.  That is
+        # wrong: scaling a gradient by a constant turns it into a non-gradient,
+        # and the SARAH recursion then carries that bias for the whole epoch.
+        # theta is applied fresh at use-time inside the prox, so changing theta
+        # is *meant* to change the shift — that is the point of theta.
+        self.algorithm.v_epoch = [vi.to(self.device) for vi in v_saved]
+        v_norm = float(
+            sum(vi.square().sum().item() for vi in self.algorithm.v_epoch) ** 0.5
+        )
+        theta_now = float(getattr(self.algorithm, "theta", 0.0))
+        # ‖θ·v‖ is the distance the AccVRS prox jumps to (z = w − θv) on the
+        # very first inner step after resume.  If it is large relative to what
+        # auto_lr × num_steps can traverse, that first prox cannot climb back
+        # and quality collapses — watch this against prox_grad_norm_ratio.
+        logger.info(
+            "Loaded v_epoch as-is (norm=%.4f, theta=%.3f, warm-start ‖θ·v‖≈%.4f)",
+            v_norm, theta_now, theta_now * v_norm,
+        )
 
     def _setup_task(self) -> None:
         self.task = ClassificationTask()
@@ -736,7 +752,10 @@ class Runner:
             return None
         resolve = getattr(prox, "_resolve_lr", None)
         if callable(resolve):
-            theta = float(OmegaConf.select(self.cfg.algorithm, "theta", default=0.0))
+            # Read theta from the live algorithm (the active trial's value),
+            # NOT self.cfg.algorithm (the base config) — in search runs those
+            # differ and the base theta would mis-report the auto-derived lr.
+            theta = float(getattr(self.algorithm, "theta", 0.0))
             try:
                 return float(resolve(theta))
             except Exception:
