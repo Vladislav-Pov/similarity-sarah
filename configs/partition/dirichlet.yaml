@@ -1,0 +1,26 @@
+name: dirichlet
+
+# Dirichlet concentration α controlling client label heterogeneity (non-IID).
+#
+#   0.1  → highly skewed clients (each holds only a few classes)
+#   1.0  → moderate heterogeneity
+#   100  → nearly uniform / IID clients
+#
+# The remaining (non-server) data is split across clients with a per-class
+# Dirichlet(α) draw.
+alpha: 0.5
+
+# IID share of the *training* data (after the val split) handed to the server
+# (objective f₁) before the Dirichlet split of the rest across clients.
+#
+#   null  → server gets an equal 1 / (num_clients + 1) IID slice
+#   0.5   → server gets ~50% IID, the rest is Dirichlet-split across clients
+#
+# Kept IID (like the uniform partition) so the algorithm's "server is a
+# special / more powerful node" assumption still holds.
+server_fraction: 0.5
+
+# Seed for the Dirichlet draw / shuffles.
+#   null → derived from the global RNG (already seeded from cfg.seed), so runs
+#          stay reproducible while still varying with the top-level seed.
+seed: null
