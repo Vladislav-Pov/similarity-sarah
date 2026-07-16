@@ -39,13 +39,19 @@ def _abs_indices(dataset: Dataset) -> list[int]:
 
 @dataclass
 class FederatedData:
-    """The five loaders a run needs."""
+    """The loaders a run needs.
+
+    ``train_eval_loader`` is a deterministic, no-augmentation loader over a
+    subset of the (pooled) training data — used only to log train loss/accuracy
+    each eval step, so over/under-fitting is visible against val.
+    """
 
     server_grad_loader: DataLoader
     server_prox_loader: DataLoader
     client_loaders: list[DataLoader]
     val_loader: DataLoader
     test_loader: DataLoader
+    train_eval_loader: DataLoader
 
 
 def build_federated_data(
@@ -110,4 +116,14 @@ def build_federated_data(
     ]
     test_loader = DataLoader(test, batch_size=eval_bs, shuffle=False, num_workers=nw)
     val_loader = DataLoader(val, batch_size=eval_bs, shuffle=False, num_workers=nw)
-    return FederatedData(server_grad, server_prox, clients, val_loader, test_loader)
+
+    # Train-set eval loader (deterministic, no augmentation): a fixed subset of
+    # the pooled train, capped for speed. Lets the loop log train loss/accuracy.
+    n_train_eval = min(len(train), 10000)  # type: ignore[arg-type]
+    train_eval_loader = DataLoader(
+        Subset(train, list(range(n_train_eval))),
+        batch_size=eval_bs, shuffle=False, num_workers=nw,
+    )
+    return FederatedData(
+        server_grad, server_prox, clients, val_loader, test_loader, train_eval_loader
+    )

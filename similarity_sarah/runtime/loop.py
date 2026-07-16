@@ -105,8 +105,14 @@ class TrainLoop:
             if step % spec.runtime.eval_every == 0:
                 val = self.task.evaluate(self.model, self.data.val_loader, self.device)
                 test = self.task.evaluate(self.model, self.data.test_loader, self.device)
+                train_eval = self.task.evaluate(
+                    self.model, self.data.train_eval_loader, self.device
+                )
                 self.logger.log(algo=algo_name, split="val", metrics=val, step=step)
                 self.logger.log(algo=algo_name, split="test", metrics=test, step=step)
+                # Train loss/accuracy (subset, deterministic) — under <algo>/train/*,
+                # alongside the algorithm's own train metrics logged above.
+                self.logger.log(algo=algo_name, split="train", metrics=train_eval, step=step)
                 best_val_acc = max(best_val_acc, val.get("accuracy", -1.0))
                 best_val_loss = min(best_val_loss, val.get("loss", float("inf")))
 
