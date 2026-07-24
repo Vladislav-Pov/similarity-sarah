@@ -8,7 +8,9 @@ num_workers: 6
 #   * ``large_batch_size`` — large minibatch for low-variance gradient
 #                            estimates that feed the SARAH recursion.
 batch_size: 512
-large_batch_size: 512
+# Kept equal to ``batch_size`` by default so a single edit drives every loader;
+# override with an explicit value to decouple the large-batch loaders.
+large_batch_size: ${.batch_size}
 
 # Server — *gradient* loader used inside the SARAH recursion (∇f₁ at w_t/w_{t-1}).
 # Must be deterministic (no augmentation): the same minibatch is reused at the two

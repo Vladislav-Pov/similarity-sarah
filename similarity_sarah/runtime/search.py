@@ -156,6 +156,10 @@ class GridSearch:
     def _iter_trials(self) -> Iterator[dict[str, object]]:
         # Materialise grids — ``_grid`` returns one-shot iterators and nested
         # loops would exhaust inner iterators after the first outer step.
+        if "partition" in self.cfg and self.cfg.partition is not None:
+            partition_grid = list(_grid(_coerce_dict(self.cfg.partition)))
+        else:
+            partition_grid = [{}]
         shared_grid = list(_grid(_coerce_dict(getattr(self.cfg, "shared", None))))
         if "batched_nfg_sarah" in self.cfg and self.cfg.batched_nfg_sarah is not None:
             batched_grid = list(_grid(_coerce_dict(self.cfg.batched_nfg_sarah)))
@@ -174,18 +178,20 @@ class GridSearch:
         else:
             fedavg_grid = [{}]
 
-        for shared_params in shared_grid:
-            for batched_params in batched_grid:
-                for svrs_params in svrs_grid:
-                    for dist_params in dist_grid:
-                        for fedavg_params in fedavg_grid:
-                            params: dict[str, object] = {}
-                            params.update(_join_params("shared", shared_params))
-                            params.update(_join_params("batched_nfg_sarah", batched_params))
-                            params.update(_join_params("svrs", svrs_params))
-                            params.update(_join_params("distributed_sarah", dist_params))
-                            params.update(_join_params("fedavg", fedavg_params))
-                            yield params
+        for partition_params in partition_grid:
+            for shared_params in shared_grid:
+                for batched_params in batched_grid:
+                    for svrs_params in svrs_grid:
+                        for dist_params in dist_grid:
+                            for fedavg_params in fedavg_grid:
+                                params: dict[str, object] = {}
+                                params.update(_join_params("partition", partition_params))
+                                params.update(_join_params("shared", shared_params))
+                                params.update(_join_params("batched_nfg_sarah", batched_params))
+                                params.update(_join_params("svrs", svrs_params))
+                                params.update(_join_params("distributed_sarah", dist_params))
+                                params.update(_join_params("fedavg", fedavg_params))
+                                yield params
 
     def run(
         self,
@@ -391,6 +397,7 @@ def _build_trial_cfgs(
     )
 
     shared: dict[str, object] = {}
+    partition_over: dict[str, object] = {}
     batched_over: dict[str, object] = {}
     svrs_over: dict[str, object] = {}
     dist_over: dict[str, object] = {}
@@ -399,6 +406,8 @@ def _build_trial_cfgs(
         v = _to_python(value)
         if key.startswith("shared."):
             shared[key.split(".", 1)[1]] = v
+        elif key.startswith("partition."):
+            partition_over[key.split(".", 1)[1]] = v
         elif key.startswith("batched_nfg_sarah."):
             batched_over[key.split(".", 1)[1]] = v
         elif key.startswith("svrs."):
@@ -468,6 +477,14 @@ def _build_trial_cfgs(
             "to search)."
         )
 
+    # Partition overrides (e.g. Dirichlet ``alpha``) apply to every algorithm
+    # config in the trial so they all train on the same data split.  The
+    # runner re-partitions per trial when it sees ``partition.*`` params.
+    if partition_over:
+        for cfg_out in out.values():
+            for k, v in partition_over.items():
+                cfg_out.partition[k] = v
+
     return out
 
 
@@ -476,6 +493,13 @@ def _sample_optuna_params(
     search_cfg: DictConfig,
 ) -> dict[str, object]:
     params: dict[str, object] = {}
+
+    for name, value in _coerce_dict(getattr(search_cfg, "partition", None)).items():
+        full_name = f"partition.{name}"
+        if _is_range_spec(value):
+            params[full_name] = _suggest_from_spec(trial, full_name, value)
+        else:
+            params[full_name] = trial.suggest_categorical(full_name, _as_list(value))
 
     for name, value in _coerce_dict(getattr(search_cfg, "shared", None)).items():
         full_name = f"shared.{name}"

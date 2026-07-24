@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 _WANDB_PARAM_ABBREV: dict[str, str] = {
     "shared.batch_size_clients": "B",
     "shared.num_epochs": "E",
+    "partition.alpha": "adir",
     "distributed_sarah.lr": "dlr",
     "batched_nfg_sarah.theta": "th",
     "batched_nfg_sarah.prox_lr": "plr",
@@ -122,21 +123,24 @@ class Runner:
             self.device = torch.device(device_str)
         logger.info("Using device: %s", self.device)
 
-    def _setup_data(self) -> None:
+    def _setup_data(self, cfg: DictConfig | None = None) -> None:
+        # ``cfg`` lets a search trial re-partition with its own
+        # ``partition`` / ``data`` overrides; defaults to the base config.
+        cfg = cfg if cfg is not None else self.cfg
         from torch.utils.data import Subset
 
-        train_dataset, test_dataset = load_dataset(self.cfg.data)
+        train_dataset, test_dataset = load_dataset(cfg.data)
         train_dataset, val_dataset = split_train_val(
-            train_dataset, self.cfg.data.val_fraction,
+            train_dataset, cfg.data.val_fraction,
         )
 
-        num_clients: int = self.cfg.algorithm.num_clients
+        num_clients: int = cfg.algorithm.num_clients
         total_nodes = num_clients + 1
         partitions = create_partition(
-            train_dataset, total_nodes, self.cfg.partition,
+            train_dataset, total_nodes, cfg.partition,
         )
 
-        rt = self.cfg.runtime
+        rt = cfg.runtime
         base_bs: int = int(rt.batch_size)
         large_bs: int = int(
             OmegaConf.select(rt, "large_batch_size", default=base_bs),
@@ -158,12 +162,12 @@ class Runner:
         # deterministic for the SARAH difference ∇f(w_t)−∇f(w_{t-1}) to be
         # meaningful (same minibatch reused at both iterates).
         augment_server = bool(
-            OmegaConf.select(self.cfg.data, "augment_server", default=False),
+            OmegaConf.select(cfg.data, "augment_server", default=False),
         )
         server_grad_dataset = partitions[0]
         server_prox_dataset = partitions[0]
         if augment_server:
-            aug_train = load_augmented_train(self.cfg.data)
+            aug_train = load_augmented_train(cfg.data)
             if aug_train is not None:
                 aug_indices = self._original_indices(partitions[0])
                 if aug_indices is not None:
@@ -578,10 +582,20 @@ class Runner:
             extra_tags=trial_tags,
         )
 
+        # Partition / dataset overrides only take effect if we rebuild the
+        # data loaders for this trial (they are otherwise set up once in
+        # __init__).  Detect them so ordinary algorithm-only sweeps keep the
+        # original "partition once, share across trials" behaviour.
+        redo_data = any(
+            str(k).startswith(("partition.", "data.")) for k in trial_params
+        )
+
         try:
             summaries = {}
             wandb_step_offset = 0
             for algo_name, algo_cfg in trial_cfgs.items():
+                if redo_data:
+                    self._setup_data(algo_cfg)
                 self._setup_model()
                 self._setup_algorithm(algo_cfg)
                 self._load_v_epoch_if_set()
