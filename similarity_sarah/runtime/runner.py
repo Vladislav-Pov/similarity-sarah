@@ -43,6 +43,7 @@ _WANDB_PARAM_ABBREV: dict[str, str] = {
     "shared.batch_size_clients": "B",
     "shared.num_epochs": "E",
     "partition.alpha": "adir",
+    "partition.server_fraction": "sfrac",
     "distributed_sarah.lr": "dlr",
     "batched_nfg_sarah.theta": "th",
     "batched_nfg_sarah.prox_lr": "plr",
