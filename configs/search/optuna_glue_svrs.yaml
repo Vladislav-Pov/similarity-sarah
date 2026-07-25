@@ -1,8 +1,13 @@
 # Independent Optuna study PER GLUE TASK for the SVRS baseline.
 # Task fixed per run (set data.task on the CLI); see optuna_glue_bnfg.yaml
-# for the rationale and scripts/tune_glue.sh for the task/method loop.
+# for the rationale and scripts/tune_glue_task.sh for the per-task loop.
 #
 #   python main.py +experiment=glue_roberta_lora data.task=rte search=optuna_glue_svrs
+#
+# SVRS now uses the SAME AccVRS batch-SGD prox solver as BNFG (prox_lr=null,
+# auto γ₀ from prox_lr_factor & prox_L1), so the search space mirrors
+# optuna_glue_bnfg.yaml exactly — only the v construction differs between the
+# two methods, keeping the comparison apples-to-apples.
 enabled: true
 method: optuna
 max_epochs: 20
@@ -22,25 +27,33 @@ pruner:
   n_warmup_epochs: 5
   interval_epochs: 1
 
+# Epochs tuned per task too (small tasks like RTE/MRPC need more passes).
 shared:
   num_epochs:
     type: int
     low: 5
     high: 20
 
-# SVRS uses the plain "sgd" prox solver ⇒ tune prox_lr directly.
+# AccVRS batch-SGD solver ⇒ tune the same knobs as BNFG.
 svrs:
   theta:
     type: float
-    low: 0.1
+    low: 0.05
     high: 1.0
     log: true
-  prox_lr:
+  prox_lr_factor:
     type: float
-    low: 1.0e-4
-    high: 5.0e-2
+    low: 0.02
+    high: 0.5
     log: true
   prox_num_steps:
     type: int
-    low: 40
-    high: 100
+    low: 3
+    high: 8
+  # Smoothness constant in L = 1 + θ·prox_L1 that sets the auto γ₀; anchored
+  # around the tuned ~136 / default 200.
+  prox_L1:
+    type: float
+    low: 50.0
+    high: 400.0
+    log: true

@@ -10,19 +10,26 @@ num_clients: 10
 # distributed_sarah but is forced to 1 internally; values > 1 trigger a
 # warning and are ignored.
 batch_size_clients: 1
-theta: 1
-num_epochs: 300
+theta: 0.31
+num_epochs: 105
 
-# ── Inexact proximal solver ────────────────────────────────────────────
-# Same solver and same hyper-parameters as BNFG so any quality difference
-# is purely from the algorithmic change (recursive vs. anchor v).
-prox_solver: sgd
-prox_num_steps: 80
-prox_lr: 0.02
-prox_momentum: 0.0
-prox_weight_decay: 0.0
-# Global L2-norm clip on the inner-step direction (∇Φ).
-prox_grad_clip: 2.0
+# ── Inexact proximal solver (AccVRS batch SGD) ─────────────────────────
+# Same solver and hyper-parameters as BNFG so any quality difference is
+# purely from the algorithmic change (recursive v vs. anchor v).
+# prox_lr: null ⇒ auto γ₀ = (1/(2L))·prox_lr_factor with L = 1 + θ·prox_L1.
+prox_solver: accvrs_batch_sgd
+prox_num_steps: 5
+prox_lr: null
+prox_L1: 136.433
+prox_lr_factor: 0.1346
+prox_momentum: 0.9
+prox_weight_decay: 0.1
+prox_grad_clip: 0.0
+prox_inner_decay_factor: 1.0
+prox_inner_decay_period: null     # null ⇒ len(server_loader) // 5
+prox_inner_early_stop_ratio: 0.001
+prox_include_linear_term: false
+
 # Number of fixed eval mini-batches for the prox-grad diagnostic (variance
 # of ‖∇Φ‖ estimate shrinks as 1/√eval_batches).
 prox_eval_batches: 4
