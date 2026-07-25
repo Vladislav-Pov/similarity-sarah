@@ -55,3 +55,11 @@ batched_nfg_sarah:
     type: int
     low: 3
     high: 8
+  # Smoothness constant in L = 1 + θ·prox_L1 that sets the auto γ₀ for the
+  # accvrs solver (with prox_lr=null).  Anchored around the tuned ~136 / default
+  # 200; larger L1 ⇒ smaller inner step.
+  prox_L1:
+    type: float
+    low: 50.0
+    high: 400.0
+    log: true
