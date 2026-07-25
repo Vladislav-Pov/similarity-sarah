@@ -8,6 +8,10 @@ task: sst2
 # Cache dir for the Hugging Face `datasets` download.
 data_dir: ./data
 
+# Hub dataset id.  The canonical "glue" is a legacy script dataset that breaks
+# with recent datasets/huggingface_hub; the namespaced parquet mirror works.
+hf_path: nyu-mll/glue
+
 # Fraction of the TRAIN split carved off for validation/search scoring.
 # The reported "test" set is the GLUE validation split (Hub test sets are
 # unlabeled), so this is a separate held-out slice of train.

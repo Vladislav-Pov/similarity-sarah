@@ -143,7 +143,11 @@ def _load_glue(cfg: DictConfig) -> tuple[Dataset, Dataset]:
     tokenizer_path = str(cfg.get("tokenizer_path", "roberta-base"))
 
     tokenizer = RobertaTokenizer.from_pretrained(tokenizer_path)
-    raw = hf_load_dataset("glue", task, cache_dir=cfg.get("data_dir", None))
+    # The canonical "glue" id is a legacy *script* dataset and breaks with
+    # recent datasets/huggingface_hub (invalid ``hf://datasets/glue@...`` URI).
+    # Load the namespaced parquet mirror instead (overridable via cfg.hf_path).
+    hf_path = str(cfg.get("hf_path", "nyu-mll/glue"))
+    raw = hf_load_dataset(hf_path, task, cache_dir=cfg.get("data_dir", None))
 
     def _pack(split_name: str) -> TensorDataset:
         split = raw[split_name]
