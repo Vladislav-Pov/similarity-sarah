@@ -1,0 +1,38 @@
+# Grid sweep over GLUE TASKS for the RoBERTa-base + LoRA setup.  Each task is
+# an INDEPENDENT trial (its own model, data split, fine-tuning) — GLUE tasks
+# have different label spaces, so there is no joint training.  Within a trial
+# all three algorithms are trained on the SAME split, giving a per-task
+# head-to-head: batched_nfg_sarah (ours) vs SVRS vs FedAvg.
+#
+# Launch (uses the GLUE experiment for data/model/partition/runtime):
+#
+#   python main.py +experiment=glue_roberta_lora search=grid_glue_tasks
+#
+# num_classes is auto-derived per task in the runner (mnli→3, rest→2), and the
+# runner rebuilds the loaders + model per trial because `data.*` is swept.
+#
+# AGGREGATION: each (task, algorithm) run logs its dev metric to W&B under its
+# own run name/tags.  The GLUE score is the *unweighted average of the per-task
+# metrics* for a given algorithm — compute it yourself from the logged numbers
+# (the search "best score" is NOT a GLUE score; see notes below).
+enabled: true
+method: grid
+max_epochs: 10
+num_trials: 100        # safety cap (> number of tasks)
+wandb_project: similarity-sarah
+wandb_group: "glue-tasks-grid-${now:%Y%m%d-%H%M%S}"
+
+# Swept axis: the GLUE task.  Ordered small→large; drop/add tasks as needed.
+#   rte ~2.5k, mrpc ~3.7k, cola ~8.5k, sst2 ~67k, qnli ~105k, qqp ~364k, mnli ~393k
+data:
+  task: [rte, mrpc, cola, sst2]
+
+# Three algorithms trained per task (single-value lists = no extra grid cross).
+# Each keeps its own tuned prox/theta defaults from configs/algorithm/*.yaml;
+# num_epochs is capped at max_epochs above so the comparison is epoch-matched.
+batched_nfg_sarah:
+  theta: [0.2]
+svrs:
+  theta: [1.0]
+fedavg:
+  lr: [0.01]

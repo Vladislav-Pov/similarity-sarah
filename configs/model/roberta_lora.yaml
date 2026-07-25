@@ -1,0 +1,23 @@
+name: roberta_lora
+
+# Source of the RoBERTa-base weights.  Either a Hugging Face hub id
+# ("roberta-base") or a local directory of trained weights, e.g. the
+# ``./roberta_base`` folder from the FedMuon repo.
+model_path: roberta-base
+
+# Number of classification labels.  With data.name=glue this is AUTO-DERIVED
+# from data.task in the runner (2 for sst2/mrpc/rte/qnli/qqp/cola, 3 for mnli),
+# so this value is only a fallback for non-GLUE use and cannot desync.
+num_classes: 2
+
+# ── LoRA adapter ──────────────────────────────────────────────────────
+# Only these adapter tensors are trainable; the RoBERTa backbone is frozen.
+# parameters() is filtered to them, so the whole SARAH/prox/FedAvg/SVRS
+# stack optimises purely in the LoRA subspace.
+lora_r: 16
+lora_alpha: 32
+# Kept at 0 (like the backbone's hidden/attention dropout, also forced to 0
+# in the wrapper) so a forward pass is deterministic — required for the
+# SARAH difference ∇f_i(w_t) − ∇f_i(w_{t-1}) to be well-defined.
+lora_dropout: 0.0
+target_modules: [query, key, value, dense]

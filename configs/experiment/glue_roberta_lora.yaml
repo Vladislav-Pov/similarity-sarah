@@ -1,0 +1,40 @@
+# @package _global_
+#
+# RoBERTa-base + LoRA fine-tuning on a GLUE task, 10 clients, IID split —
+# reuses every mechanism of the CIFAR-10/ResNet-18 setup (server f₁ + inexact
+# prox, SARAH recursion, uniform partition).  Compare our method against the
+# baselines by overriding the algorithm on the command line:
+#
+#   python main.py +experiment=glue_roberta_lora                    # batched_nfg_sarah (ours)
+#   python main.py +experiment=glue_roberta_lora algorithm=svrs     # SVRS baseline
+#   python main.py +experiment=glue_roberta_lora algorithm=fedavg   # FedAvg baseline
+#
+# Switch task with `data.task=mrpc model.num_classes=2` (see configs/data/glue.yaml
+# for the label count each task needs).
+defaults:
+  - override /algorithm: batched_nfg_sarah
+  - override /data: glue
+  - override /model: roberta_lora
+  - override /partition: uniform
+  - override /runtime: default
+
+seed: 42
+
+data:
+  task: sst2
+
+# model.num_classes is auto-derived from data.task (see runner), no need to set.
+
+partition:
+  # IID: server f₁ keeps 50%, the 10 clients split the remaining 50% equally.
+  server_fraction: 0.5
+
+algorithm:
+  num_clients: 10
+  num_epochs: 10
+
+runtime:
+  # RoBERTa-base won't fit the CIFAR default (512); start small and scale to
+  # whatever the GPU allows.  Drives every loader (see runtime/default.yaml).
+  batch_size: 32
+  num_workers: 2

@@ -11,3 +11,7 @@ wandb
 optuna
 pandas
 matplotlib
+# NLP task (RoBERTa-base + LoRA on GLUE) — only needed for model=roberta_lora / data=glue
+transformers>=4.40.0
+peft>=0.10.0
+datasets>=2.18.0

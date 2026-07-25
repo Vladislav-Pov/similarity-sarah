@@ -1,0 +1,57 @@
+# Independent Optuna study PER GLUE TASK for batched_nfg_sarah (ours).
+#
+# The task is FIXED per run (NOT a search axis) so every task gets its own
+# study and its own best hyper-parameters — the correct way to tune GLUE,
+# whose tasks differ in size/difficulty.  Set the task on the CLI:
+#
+#   python main.py +experiment=glue_roberta_lora data.task=rte search=optuna_glue_bnfg
+#
+# ...or loop over all tasks × methods with scripts/tune_glue.sh.
+#
+# No per-task reference values exist in FedMuon (only aggregate GLUE numbers),
+# so ranges are anchored on the LoRA setup (rank 16) + our accvrs prox defaults.
+enabled: true
+method: optuna
+max_epochs: 20
+num_trials: 30
+wandb_project: glue-tune
+wandb_group: "glue-bnfg-${data.task}-${now:%Y%m%d-%H%M%S}"
+
+storage_dir: optuna_studies
+# Task-encoded and timestamp-free ⇒ one RESUMABLE study DB per task
+# (optuna_studies/glue-bnfg-<task>.db).  Rerun to extend the same study.
+study_name: "glue-bnfg-${data.task}"
+
+sampler:
+  kind: tpe
+  seed: 0
+pruner:
+  kind: median
+  n_startup_trials: 6
+  n_warmup_epochs: 5
+  interval_epochs: 1
+
+# Epochs are tuned per task too (small tasks like RTE/MRPC need more passes).
+shared:
+  num_epochs:
+    type: int
+    low: 5
+    high: 20
+
+# accvrs_batch_sgd solver: prox_lr stays null (auto γ₀ from prox_lr_factor),
+# prox_num_steps counts epochs over the server loader.
+batched_nfg_sarah:
+  theta:
+    type: float
+    low: 0.05
+    high: 1.0
+    log: true
+  prox_lr_factor:
+    type: float
+    low: 0.02
+    high: 0.5
+    log: true
+  prox_num_steps:
+    type: int
+    low: 3
+    high: 8

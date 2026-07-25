@@ -87,7 +87,82 @@ def load_dataset(cfg: DictConfig) -> tuple[Dataset, Dataset]:
             n_test=cfg.get("n_test", 100),
         )
 
+    if cfg.name == "glue":
+        return _load_glue(cfg)
+
     raise ValueError(f"Unknown dataset: {cfg.name}")
+
+
+# GLUE task → (text field(s), num_labels, validation split name).  Single-
+# sentence tasks have a ``None`` second field.  STS-B is regression and is
+# intentionally excluded (needs an MSE task, not ClassificationTask).
+_GLUE_TASKS: dict[str, tuple[str, str | None, int, str]] = {
+    "cola": ("sentence", None, 2, "validation"),
+    "sst2": ("sentence", None, 2, "validation"),
+    "mrpc": ("sentence1", "sentence2", 2, "validation"),
+    "rte": ("sentence1", "sentence2", 2, "validation"),
+    "qnli": ("question", "sentence", 2, "validation"),
+    "qqp": ("question1", "question2", 2, "validation"),
+    "mnli": ("premise", "hypothesis", 3, "validation_matched"),
+}
+
+
+def glue_num_labels(task: str) -> int:
+    """Number of classification labels for a GLUE *task* (see ``_GLUE_TASKS``)."""
+    key = str(task).lower()
+    if key not in _GLUE_TASKS:
+        raise ValueError(
+            f"Unsupported GLUE task {key!r}; choose one of {sorted(_GLUE_TASKS)}",
+        )
+    return _GLUE_TASKS[key][2]
+
+
+def _load_glue(cfg: DictConfig) -> tuple[Dataset, Dataset]:
+    """Load a GLUE task as ``(train, eval)`` TensorDatasets of packed tensors.
+
+    Each sample ``x`` is an integer tensor of shape ``(2, max_length)`` with
+    ``x[0] = input_ids`` and ``x[1] = attention_mask`` — the packing the
+    :class:`RobertaLoRA` wrapper expects, so the vision-shaped ``(x, y)``
+    pipeline (loaders, SARAH recursion, prox solvers) needs no changes.
+
+    GLUE test splits on the Hub are unlabeled, so the returned "test" set is
+    the task's validation split (standard practice for reporting GLUE dev
+    numbers).  ``runner`` further carves a val split out of ``train`` via
+    ``data.val_fraction``.
+    """
+    from datasets import load_dataset as hf_load_dataset
+    from transformers import RobertaTokenizer
+
+    task = str(cfg.task).lower()
+    if task not in _GLUE_TASKS:
+        raise ValueError(
+            f"Unsupported GLUE task {task!r}; choose one of {sorted(_GLUE_TASKS)}",
+        )
+    field_a, field_b, _, eval_split = _GLUE_TASKS[task]
+    max_length = int(cfg.get("max_length", 128))
+    tokenizer_path = str(cfg.get("tokenizer_path", "roberta-base"))
+
+    tokenizer = RobertaTokenizer.from_pretrained(tokenizer_path)
+    raw = hf_load_dataset("glue", task, cache_dir=cfg.get("data_dir", None))
+
+    def _pack(split_name: str) -> TensorDataset:
+        split = raw[split_name]
+        texts_a = split[field_a]
+        texts_b = split[field_b] if field_b is not None else None
+        enc = tokenizer(
+            texts_a,
+            texts_b,
+            truncation=True,
+            padding="max_length",
+            max_length=max_length,
+            return_tensors="pt",
+        )
+        # (N, 2, L): stack [input_ids, attention_mask] on a new middle axis.
+        x = torch.stack([enc["input_ids"], enc["attention_mask"]], dim=1)
+        y = torch.tensor(split["label"], dtype=torch.long)
+        return TensorDataset(x, y)
+
+    return _pack("train"), _pack(eval_split)
 
 
 def load_augmented_train(cfg: DictConfig) -> Dataset | None:

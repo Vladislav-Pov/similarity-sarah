@@ -20,6 +20,7 @@ from similarity_sarah.algorithms.distributed_sarah import DistributedSARAH
 from similarity_sarah.algorithms.fedavg import FedAvg
 from similarity_sarah.algorithms.svrs import SVRS
 from similarity_sarah.data.datasets import (
+    glue_num_labels,
     load_augmented_train,
     load_dataset,
     split_train_val,
@@ -27,6 +28,7 @@ from similarity_sarah.data.datasets import (
 from similarity_sarah.data.partition import create_partition
 from similarity_sarah.models.simple_cnn import SimpleCNN
 from similarity_sarah.models.resnet import ResNet18_32x32
+from similarity_sarah.models.roberta_lora import RobertaLoRA
 from similarity_sarah.runtime.prox_solver import (
     InexactProxAdam,
     InexactProxSGD,
@@ -44,6 +46,7 @@ _WANDB_PARAM_ABBREV: dict[str, str] = {
     "shared.num_epochs": "E",
     "partition.alpha": "adir",
     "partition.server_fraction": "sfrac",
+    "data.task": "task",
     "distributed_sarah.lr": "dlr",
     "batched_nfg_sarah.theta": "th",
     "batched_nfg_sarah.prox_lr": "plr",
@@ -244,20 +247,55 @@ class Runner:
         indices = idx
         return indices
 
-    def _setup_model(self) -> None:
-        name: str = self.cfg.model.name
+    @staticmethod
+    def _resolve_num_classes(cfg: DictConfig) -> int:
+        """Number of output classes for the model.
+
+        For the GLUE data path this is derived automatically from
+        ``data.task`` so ``model.num_classes`` can never desync from the task
+        (e.g. mnli needs 3, the rest 2).  Otherwise the explicit config value
+        is used.
+        """
+        if OmegaConf.select(cfg, "data.name", default=None) == "glue":
+            return glue_num_labels(cfg.data.task)
+        return int(cfg.model.num_classes)
+
+    def _setup_model(self, cfg: DictConfig | None = None) -> None:
+        # ``cfg`` lets a search trial rebuild the model with its own
+        # ``model`` / ``data`` overrides (e.g. a GLUE-task sweep, where the
+        # label count changes per trial); defaults to the base config.
+        cfg = cfg if cfg is not None else self.cfg
+        name: str = cfg.model.name
         if name == "simple_cnn":
             self.model = SimpleCNN(
-                num_classes=self.cfg.model.num_classes,
+                num_classes=cfg.model.num_classes,
             ).to(self.device)
         elif name == "resnet18_32x32":
             self.model = ResNet18_32x32(
-                num_classes=self.cfg.model.num_classes,
+                num_classes=cfg.model.num_classes,
+            ).to(self.device)
+        elif name == "roberta_lora":
+            self.model = RobertaLoRA(
+                model_path=cfg.model.model_path,
+                num_classes=self._resolve_num_classes(cfg),
+                lora_r=int(OmegaConf.select(cfg.model, "lora_r", default=16)),
+                lora_alpha=int(
+                    OmegaConf.select(cfg.model, "lora_alpha", default=32),
+                ),
+                lora_dropout=float(
+                    OmegaConf.select(cfg.model, "lora_dropout", default=0.0),
+                ),
+                target_modules=OmegaConf.select(
+                    cfg.model, "target_modules",
+                    default=["query", "key", "value", "dense"],
+                ),
             ).to(self.device)
         else:
             raise ValueError(f"Unknown model: {name}")
+        # For roberta_lora, parameters() is filtered to the trainable LoRA
+        # tensors, so this count reports the adapter size (not the backbone).
         n_params = sum(p.numel() for p in self.model.parameters())
-        logger.info("Model: %s  (%d parameters)", name, n_params)
+        logger.info("Model: %s  (%d trainable parameters)", name, n_params)
 
         init_ckpt = OmegaConf.select(self.cfg.runtime, "init_from_checkpoint", default=None)
         if init_ckpt:
@@ -597,7 +635,7 @@ class Runner:
             for algo_name, algo_cfg in trial_cfgs.items():
                 if redo_data:
                     self._setup_data(algo_cfg)
-                self._setup_model()
+                self._setup_model(algo_cfg)
                 self._setup_algorithm(algo_cfg)
                 self._load_v_epoch_if_set()
                 summary = self._run_training(

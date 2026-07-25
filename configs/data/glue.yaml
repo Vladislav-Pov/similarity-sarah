@@ -1,0 +1,20 @@
+name: glue
+
+# GLUE task to fine-tune on.  Supported (label count in parentheses):
+#   sst2 (2)  cola (2)  mrpc (2)  rte (2)  qnli (2)  qqp (2)  mnli (3)
+# Keep model.num_classes in sync with the task's label count.
+task: sst2
+
+# Cache dir for the Hugging Face `datasets` download.
+data_dir: ./data
+
+# Fraction of the TRAIN split carved off for validation/search scoring.
+# The reported "test" set is the GLUE validation split (Hub test sets are
+# unlabeled), so this is a separate held-out slice of train.
+val_fraction: 0.1
+
+# Max token sequence length (padded/truncated); fixes the packed tensor shape.
+max_length: 128
+
+# Tokenizer source — should match the RoBERTa weights in the model config.
+tokenizer_path: roberta-base
