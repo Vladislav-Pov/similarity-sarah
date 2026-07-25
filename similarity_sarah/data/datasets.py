@@ -151,16 +151,20 @@ def _load_glue(cfg: DictConfig) -> tuple[Dataset, Dataset]:
 
     def _pack(split_name: str) -> TensorDataset:
         split = raw[split_name]
-        texts_a = split[field_a]
-        texts_b = split[field_b] if field_b is not None else None
-        enc = tokenizer(
-            texts_a,
-            texts_b,
+        # Materialise columns to plain Python lists; pass text_pair only for
+        # sentence-pair tasks (passing None positionally routes some
+        # transformers versions into the single-example encoder → ValueError).
+        texts_a = list(split[field_a])
+        tok_kwargs = dict(
             truncation=True,
             padding="max_length",
             max_length=max_length,
             return_tensors="pt",
         )
+        if field_b is not None:
+            enc = tokenizer(texts_a, list(split[field_b]), **tok_kwargs)
+        else:
+            enc = tokenizer(texts_a, **tok_kwargs)
         # (N, 2, L): stack [input_ids, attention_mask] on a new middle axis.
         x = torch.stack([enc["input_ids"], enc["attention_mask"]], dim=1)
         y = torch.tensor(split["label"], dtype=torch.long)
