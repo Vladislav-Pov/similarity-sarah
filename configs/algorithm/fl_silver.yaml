@@ -1,0 +1,38 @@
+name: fl_silver
+
+# FL-SILVER (Algorithm 2 of https://openreview.net/pdf?id=pOgMluzEIH):
+# federated variance-reduced LOCAL training with a persistent per-client
+# gradient memory {y_i}, refreshed under the average second-order similarity
+# assumption.  Added as a baseline alongside batched_nfg_sarah / svrs /
+# distributed_sarah / fedavg.
+#
+# Defaults aligned with the other baselines (num_clients=10, B=1-style
+# single-client-per-round sampling) so epoch budgets are comparable.  With
+# include_server=true the P participants are the server's f_1 plus the 10
+# clients (P = 11), matching distributed_sarah's total_nodes = M + 1.
+num_clients: 10
+num_epochs: 50
+
+# η — local step size for the K inner SARAH steps.
+lr: 0.01
+# K — number of local variance-reduced steps run on the sampled client.
+num_local_steps: 5
+# p — number of client memories re-queried (|I^t|) each round.  p < P is the
+# whole point: the (P − p) un-queried clients advance their memory by the mean
+# observed gradient change (legal under similarity, Algorithm 2 line 20).
+num_refresh_clients: 3
+# T — number of rounds per outer epoch (one client trains locally per round).
+# Set equal to the client count so one epoch ≈ one pass of local-training
+# rounds, comparable to the K = num_clients inner steps of the SARAH baselines.
+rounds_per_epoch: 10
+# Number of minibatches averaged into each anchor y_i (plays the role of K in
+# the paper's "size Kb" anchor batch; 1 ⇒ a single minibatch, cheapest).
+anchor_batches: 2
+# Std of the injected Gaussian perturbation ξ^{t,k} ~ √(2η)·noise_std·N(0,I).
+# 0.0 ⇒ pure optimization (directly comparable to the other optimizers);
+# > 0 recovers the paper's Langevin/sampling variant.
+noise_std: 0.0
+# Whether the server's local function f_1 participates as one of the P nodes.
+# true ⇒ P = num_clients + 1 (uses the server partition's data, parity with
+# distributed_sarah); false ⇒ P = num_clients (literal client-only setup).
+include_server: true

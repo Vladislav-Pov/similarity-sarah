@@ -18,6 +18,7 @@ from similarity_sarah.algorithms.base import BaseAlgorithm
 from similarity_sarah.algorithms.batched_nfg_sarah import BatchedNoFullGradSARAH
 from similarity_sarah.algorithms.distributed_sarah import DistributedSARAH
 from similarity_sarah.algorithms.fedavg import FedAvg
+from similarity_sarah.algorithms.fl_silver import FLSilver
 from similarity_sarah.algorithms.svrs import SVRS
 from similarity_sarah.data.datasets import (
     glue_num_labels,
@@ -534,6 +535,22 @@ class Runner:
             algorithm = FedAvg(
                 lr=algo_cfg.lr,
                 batch_size_clients=algo_cfg.batch_size_clients,
+                include_server=bool(
+                    OmegaConf.select(algo_cfg, "include_server", default=True),
+                ),
+            )
+        elif algo_cfg.name == "fl_silver":
+            algorithm = FLSilver(
+                lr=algo_cfg.lr,
+                num_local_steps=int(algo_cfg.num_local_steps),
+                num_refresh_clients=int(algo_cfg.num_refresh_clients),
+                rounds_per_epoch=int(algo_cfg.rounds_per_epoch),
+                anchor_batches=int(
+                    OmegaConf.select(algo_cfg, "anchor_batches", default=1),
+                ),
+                noise_std=float(
+                    OmegaConf.select(algo_cfg, "noise_std", default=0.0),
+                ),
                 include_server=bool(
                     OmegaConf.select(algo_cfg, "include_server", default=True),
                 ),

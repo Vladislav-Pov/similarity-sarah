@@ -135,6 +135,50 @@ def _suggest_from_spec(
     raise ValueError(f"Unknown range spec for {name!r}: {kind}")
 
 
+# Algorithm blocks recognised in a search yaml (each optional).  A trial trains
+# every block present, sequentially, and scores the mean best_val_accuracy.
+_SEARCH_ALGO_BLOCKS = (
+    "batched_nfg_sarah",
+    "svrs",
+    "distributed_sarah",
+    "fedavg",
+    "fl_silver",
+)
+
+
+def _grid_choices(name: str, value: object) -> list[object]:
+    """Explicit value list for a param, for building an Optuna GridSampler space.
+
+    Grid enumeration needs discrete choices, so a categorical spec
+    (``{type: categorical, choices: [...]}``) or a bare YAML list is required;
+    continuous ``float``/``int`` ranges cannot be enumerated and raise.
+    """
+    if _is_range_spec(value):
+        spec = value
+        if OmegaConf.is_config(spec):
+            spec = OmegaConf.to_container(spec, resolve=True)  # type: ignore[assignment]
+        assert isinstance(spec, Mapping)
+        kind = str(spec["type"]).lower()
+        if kind != "categorical":
+            raise ValueError(
+                f"Grid sampler needs categorical/list specs with explicit "
+                f"choices; parameter {name!r} has type={kind!r}. Give it a "
+                f"`choices:` list (or use a non-grid sampler)."
+            )
+        return list(spec["choices"])
+    return _as_list(value)
+
+
+def _build_grid_search_space(search_cfg: DictConfig) -> dict[str, list[object]]:
+    """Full {param_name: [choices]} grid, keyed exactly like `_sample_optuna_params`."""
+    space: dict[str, list[object]] = {}
+    for block in ("data", "partition", "shared", *_SEARCH_ALGO_BLOCKS):
+        for name, value in _coerce_dict(getattr(search_cfg, block, None)).items():
+            full_name = f"{block}.{name}"
+            space[full_name] = _grid_choices(full_name, value)
+    return space
+
+
 # ----------------------------------------------------------------------
 @dataclass
 class SearchConfig:
@@ -181,6 +225,10 @@ class GridSearch:
             fedavg_grid = list(_grid(_coerce_dict(self.cfg.fedavg)))
         else:
             fedavg_grid = [{}]
+        if "fl_silver" in self.cfg and self.cfg.fl_silver is not None:
+            fls_grid = list(_grid(_coerce_dict(self.cfg.fl_silver)))
+        else:
+            fls_grid = [{}]
 
         for data_params in data_grid:
             for partition_params in partition_grid:
@@ -189,15 +237,17 @@ class GridSearch:
                         for svrs_params in svrs_grid:
                             for dist_params in dist_grid:
                                 for fedavg_params in fedavg_grid:
-                                    params: dict[str, object] = {}
-                                    params.update(_join_params("data", data_params))
-                                    params.update(_join_params("partition", partition_params))
-                                    params.update(_join_params("shared", shared_params))
-                                    params.update(_join_params("batched_nfg_sarah", batched_params))
-                                    params.update(_join_params("svrs", svrs_params))
-                                    params.update(_join_params("distributed_sarah", dist_params))
-                                    params.update(_join_params("fedavg", fedavg_params))
-                                    yield params
+                                    for fls_params in fls_grid:
+                                        params: dict[str, object] = {}
+                                        params.update(_join_params("data", data_params))
+                                        params.update(_join_params("partition", partition_params))
+                                        params.update(_join_params("shared", shared_params))
+                                        params.update(_join_params("batched_nfg_sarah", batched_params))
+                                        params.update(_join_params("svrs", svrs_params))
+                                        params.update(_join_params("distributed_sarah", dist_params))
+                                        params.update(_join_params("fedavg", fedavg_params))
+                                        params.update(_join_params("fl_silver", fls_params))
+                                        yield params
 
     def run(
         self,
@@ -243,6 +293,16 @@ class OptunaSearch:
                 seed = int(seed_val)
         if kind == "random":
             return optuna.samplers.RandomSampler(seed=seed)
+        if kind == "grid":
+            # True Cartesian-grid enumeration: GridSampler walks the whole grid
+            # (no duplicates until exhausted).  Set num_trials = |grid| to cover
+            # it exactly.  All params must be categorical/list (no float ranges).
+            search_space = _build_grid_search_space(self.cfg)
+            try:
+                return optuna.samplers.GridSampler(search_space, seed=seed)
+            except TypeError:
+                # Older Optuna: GridSampler has no ``seed`` kwarg.
+                return optuna.samplers.GridSampler(search_space)
         return optuna.samplers.TPESampler(seed=seed)
 
     def _build_pruner(self) -> "optuna.pruners.BasePruner":
@@ -409,6 +469,7 @@ def _build_trial_cfgs(
     svrs_over: dict[str, object] = {}
     dist_over: dict[str, object] = {}
     fedavg_over: dict[str, object] = {}
+    fls_over: dict[str, object] = {}
     for key, value in params.items():
         v = _to_python(value)
         if key.startswith("shared."):
@@ -425,6 +486,8 @@ def _build_trial_cfgs(
             dist_over[key.split(".", 1)[1]] = v
         elif key.startswith("fedavg."):
             fedavg_over[key.split(".", 1)[1]] = v
+        elif key.startswith("fl_silver."):
+            fls_over[key.split(".", 1)[1]] = v
 
     out: dict[str, DictConfig] = {}
 
@@ -478,6 +541,18 @@ def _build_trial_cfgs(
             fedavg_cfg[k] = v
         fedavg_cfg.num_epochs = min(int(fedavg_cfg.num_epochs), max_epochs)
         out["fedavg"] = _override_algorithm(base_cfg, fedavg_cfg)
+
+    if "fl_silver" in search_cfg and search_cfg.fl_silver is not None:
+        fls_cfg = OmegaConf.merge(
+            _algorithm_yaml_defaults("fl_silver"), OmegaConf.create(),
+        )
+        fls_cfg.name = "fl_silver"
+        for k, v in shared.items():
+            fls_cfg[k] = v
+        for k, v in fls_over.items():
+            fls_cfg[k] = v
+        fls_cfg.num_epochs = min(int(fls_cfg.num_epochs), max_epochs)
+        out["fl_silver"] = _override_algorithm(base_cfg, fls_cfg)
 
     if not out:
         raise ValueError(
@@ -563,6 +638,15 @@ def _sample_optuna_params(
         getattr(search_cfg, "fedavg", None),
     ).items():
         full_name = f"fedavg.{name}"
+        if _is_range_spec(value):
+            params[full_name] = _suggest_from_spec(trial, full_name, value)
+        else:
+            params[full_name] = trial.suggest_categorical(full_name, _as_list(value))
+
+    for name, value in _coerce_dict(
+        getattr(search_cfg, "fl_silver", None),
+    ).items():
+        full_name = f"fl_silver.{name}"
         if _is_range_spec(value):
             params[full_name] = _suggest_from_spec(trial, full_name, value)
         else:
