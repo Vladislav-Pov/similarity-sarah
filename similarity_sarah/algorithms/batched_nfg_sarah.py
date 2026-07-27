@@ -38,6 +38,7 @@ evaluate all four gradient quantities on those fixed tensors.
 from __future__ import annotations
 
 import logging
+import math
 
 import torch
 import torch.nn as nn
@@ -105,17 +106,40 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             ``batch_size_clients == 1``.  Default False.
         clip_clients_per_epoch: Group size for the flag above (default 3).
         log_deviation: If True, at the start of every epoch compute the
-            *exact* full-gradient anchor
-            ``g_exact = (1/n) Σ_{i=2..n} (∇f_i − ∇f_1)(w_0^{(s)})``
+            *exact* lemma reference anchor
+            ``g_exact = ∇(f − f_1)(w_0^{(s)})
+                     = (1/n) Σ_{i=2..n} (∇f_i − ∇f_1)(w_0^{(s)})``
             via :func:`compute_full_gradient` on every node, and log the
-            squared deviation of the carry-over estimator
-            ``v_0^{(s)} = self.v_epoch`` from this exact value:
-            ``‖v_0^{(s)} − g_exact‖²``.  Useful as a diagnostic for
-            how close the running-mean estimator stays to the true
-            gradient over training.  Cost: one full pass over the
-            server's grad loader plus one full pass per client per
-            epoch (i.e. an SVRS-style anchor refresh, but only for
-            logging — not used in the update).  Default False.
+            deviation of the carry-over estimator
+            ``v_0^{(s)} = self.v_epoch`` from this exact value in three
+            complementary flavours:
+
+              * absolute      ``‖v_0 − g_exact‖`` (and its square),
+              * proportional  ``‖v_0 − g_exact‖ / ‖g_exact‖``,
+              * directional   ``cos∠(v_0, g_exact)`` and the angle in °.
+
+            The reference is *average gradient minus server gradient*
+            ``∇(f − f_1)`` — the exact object the SARAH recursion tries
+            to estimate and the one bounded by the epoch-initial
+            variance lemma — *not* the plain full gradient ``∇f``.
+            Useful as a diagnostic for how close the running-mean
+            estimator stays to the true value over training.  Cost: one
+            full pass over the server's grad loader plus one full pass
+            per client per epoch (i.e. an SVRS-style anchor refresh, but
+            only for logging — not used in the update).  Default False.
+        log_deviation_inner: If True, additionally measure the same
+            deviation of the *running* estimator ``v_t`` from
+            ``∇(f − f_1)(w_t)`` at **every inner step** ``t`` of the
+            epoch (evaluated at the current iterate ``w_t`` just before
+            the prox move).  Per-epoch aggregates (mean / max / last of
+            the proportional and angular deviation, plus the start-of-
+            epoch point) are returned as scalar metrics, and the full
+            within-epoch curve is stashed in ``self.last_inner_deviation``
+            so the runner can push it to W&B as a table + line plots.
+            Implies ``log_deviation`` for the start-of-epoch point.
+            *Very* expensive — one exact full-gradient anchor per inner
+            step (K SVRS-style refreshes per epoch) — meant only for
+            paper-figure / diagnostic runs.  Default False.
     """
 
     def __init__(
@@ -127,6 +151,7 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         clip_number_of_clients_with_reshuffle: bool = False,
         clip_clients_per_epoch: int = 3,
         log_deviation: bool = False,
+        log_deviation_inner: bool = False,
     ) -> None:
         self.theta = theta
         self.batch_size_clients = batch_size_clients
@@ -136,7 +161,13 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             clip_number_of_clients_with_reshuffle
         )
         self.clip_clients_per_epoch = int(clip_clients_per_epoch)
-        self.log_deviation = bool(log_deviation)
+        self.log_deviation_inner = bool(log_deviation_inner)
+        # Inner-step logging needs the start-of-epoch anchor too.
+        self.log_deviation = bool(log_deviation) or self.log_deviation_inner
+        # Within-epoch deviation curve of the most recent epoch, stashed for
+        # the runner to forward to W&B (list of per-inner-step metric dicts,
+        # or None).  See ``log_deviation_inner``.
+        self.last_inner_deviation: list[dict[str, float]] | None = None
 
         self.model: nn.Module | None = None
         self.server_grad_loader: DataLoader | None = None
@@ -277,6 +308,54 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         return accum
 
     # ------------------------------------------------------------------
+    # Deviation of an estimator ``v`` from the lemma reference ``g``.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _deviation_metrics(v: ParamList, g: ParamList) -> dict[str, float]:
+        """Deviation of estimator ``v`` from reference ``g = ∇(f − f_1)``.
+
+        Returns the three complementary flavours used throughout the
+        deviation diagnostics:
+
+          * ``dev_norm`` / ``dev_sq`` — absolute ``‖v − g‖`` (and square),
+          * ``dev_rel``               — proportion ``‖v − g‖ / ‖g‖``,
+          * ``cos_sim`` / ``angle_deg`` — direction (cosine and angle in °).
+
+        Also reports ``est_norm = ‖v‖`` and ``ref_norm = ‖g‖``.  When a
+        norm is zero the ratio / angle are ``nan`` (W&B renders a gap).
+        """
+        diff_sq = 0.0
+        dot = 0.0
+        v_sq = 0.0
+        g_sq = 0.0
+        for vi, gi in zip(v, g):
+            diff_sq += (vi - gi).square().sum().item()
+            dot += (vi * gi).sum().item()
+            v_sq += vi.square().sum().item()
+            g_sq += gi.square().sum().item()
+
+        est_norm = float(v_sq ** 0.5)
+        ref_norm = float(g_sq ** 0.5)
+        dev_norm = float(diff_sq ** 0.5)
+        dev_rel = dev_norm / ref_norm if ref_norm > 0.0 else float("nan")
+        denom = est_norm * ref_norm
+        if denom > 0.0:
+            cos_sim = max(-1.0, min(1.0, dot / denom))
+            angle_deg = math.degrees(math.acos(cos_sim))
+        else:
+            cos_sim = float("nan")
+            angle_deg = float("nan")
+        return {
+            "dev_sq": float(diff_sq),
+            "dev_norm": dev_norm,
+            "dev_rel": float(dev_rel),
+            "cos_sim": float(cos_sim),
+            "angle_deg": float(angle_deg),
+            "est_norm": est_norm,
+            "ref_norm": ref_norm,
+        }
+
+    # ------------------------------------------------------------------
     # Persistent-permutation slicing for ``clip_number_of_clients_with_reshuffle``.
     # ------------------------------------------------------------------
     def _next_clipped_client_slice(self) -> list[int]:
@@ -333,27 +412,28 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         v = clone_params(self.v_epoch)
         tilde_v = zeros_like_params(self.model)
 
-        # ── Optional diagnostic: ‖v_0^{(s)} − ∇(f − f_1)(w_0^{(s)})‖² ──
-        # Compares the carry-over estimator to the *exact* full-gradient
-        # anchor at the start-of-epoch iterate.  Model is currently at
-        # w_0^{(s)} so the gradient is taken at the right point.  Skipped
+        # ── Optional diagnostic: deviation of v_0^{(s)} from the lemma
+        #    reference g = ∇(f − f_1)(w_0^{(s)}) ────────────────────────
+        # Compares the carry-over estimator to the *exact* average-minus-
+        # server gradient anchor at the start-of-epoch iterate (the object
+        # bounded by the epoch-initial variance lemma).  Model is currently
+        # at w_0^{(s)} so the gradient is taken at the right point.  Skipped
         # by default — flag is for diagnostic runs only.
-        v0_deviation_sq = 0.0
-        v0_deviation_norm = 0.0
-        exact_grad_diff_norm = 0.0
         v0_norm_at_start = compute_param_norm(v)
+        v0_metrics: dict[str, float] = {}
+        # Within-epoch curve: start-of-epoch point (inner_step 0) then one
+        # row per inner step (filled below when ``log_deviation_inner``).
+        deviation_series: list[dict[str, float]] = []
         if self.log_deviation:
             exact_grad_diff = self._compute_exact_full_grad_diff()
-            sq = 0.0
-            for vi, ei in zip(v, exact_grad_diff):
-                sq += (vi - ei).square().sum().item()
-            v0_deviation_sq = float(sq)
-            v0_deviation_norm = float(sq ** 0.5)
-            exact_grad_diff_norm = compute_param_norm(exact_grad_diff)
+            v0_metrics = self._deviation_metrics(v, exact_grad_diff)
+            deviation_series.append({"inner_step": 0.0, **v0_metrics})
             logger.info(
-                "Epoch %d log_deviation: ‖v_0‖=%.4e  ‖∇(f-f_1)(w_0)‖=%.4e  "
-                "‖v_0 - ∇(f-f_1)(w_0)‖²=%.4e",
-                epoch, v0_norm_at_start, exact_grad_diff_norm, v0_deviation_sq,
+                "Epoch %d deviation@start: ‖v_0‖=%.4e  ‖g‖=%.4e  "
+                "‖v_0-g‖=%.4e  rel=%.4f  cos=%.4f  angle=%.1f°",
+                epoch, v0_metrics["est_norm"], v0_metrics["ref_norm"],
+                v0_metrics["dev_norm"], v0_metrics["dev_rel"],
+                v0_metrics["cos_sim"], v0_metrics["angle_deg"],
             )
 
         # w_0 for the first inner step (used as w_{t-1} when t=1).
@@ -429,6 +509,18 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
 
             # w_{t+1} = prox_{θ f₁}( w_t − θ v_t )
             set_params(self.model, w_curr)
+
+            # ── Optional diagnostic: deviation of the running estimator
+            #    v_t from ∇(f − f_1)(w_t) at the current iterate ───────
+            # Model is at w_curr = w_t here (restored above, prox has not
+            # moved it yet), so the exact anchor is taken at the right
+            # point.  ``_compute_exact_full_grad_diff`` only reads
+            # gradients (autograd.grad) — it does not mutate params.
+            if self.log_deviation_inner:
+                g_t = self._compute_exact_full_grad_diff()
+                m_t = self._deviation_metrics(v, g_t)
+                deviation_series.append({"inner_step": float(t), **m_t})
+
             prox_diag = self.prox_solver.step(
                 self.model, v, self.theta,
                 self.server_prox_loader, self.loss_fn, self.device,
@@ -485,7 +577,7 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
         def _avg(xs: list[float]) -> float:
             return float(sum(xs) / len(xs)) if xs else 0.0
 
-        return {
+        metrics: dict[str, float] = {
             "epoch": float(epoch),
             "inner_steps": float(K),
             "v_norm": compute_param_norm(v),
@@ -500,10 +592,56 @@ class BatchedNoFullGradSARAH(BaseAlgorithm):
             "prox_grad_norm_ratio_mean": _avg(prox_ratios),
             "prox_obj_decrease_mean": _avg(prox_obj_decreases),
             "prox_clip_frac_mean": _avg(prox_clip_fracs),
-            # Diagnostic: deviation of carry-over v_0 from exact ∇(f-f_1)(w_0).
-            # Zero when ``log_deviation`` is False (cheap default).
-            "v0_deviation_sq": v0_deviation_sq,
-            "v0_deviation_norm": v0_deviation_norm,
             "v0_norm_at_start": v0_norm_at_start,
-            "exact_grad_diff_norm": exact_grad_diff_norm,
         }
+
+        # ── Start-of-epoch deviation of v_0 from g = ∇(f-f_1)(w_0). ──
+        # Backward-compatible keys (…_sq, …_norm, exact_grad_diff_norm) plus
+        # the proportional and directional flavours.  0.0 / nan when
+        # ``log_deviation`` is False (cheap default).
+        if v0_metrics:
+            metrics.update({
+                "v0_deviation_sq": v0_metrics["dev_sq"],
+                "v0_deviation_norm": v0_metrics["dev_norm"],
+                "exact_grad_diff_norm": v0_metrics["ref_norm"],
+                "v0_deviation_rel": v0_metrics["dev_rel"],
+                "v0_cos_sim": v0_metrics["cos_sim"],
+                "v0_angle_deg": v0_metrics["angle_deg"],
+            })
+        else:
+            metrics.update({
+                "v0_deviation_sq": 0.0,
+                "v0_deviation_norm": 0.0,
+                "exact_grad_diff_norm": 0.0,
+            })
+
+        # ── Within-epoch deviation aggregates (log_deviation_inner). ──
+        # Aggregate over the inner steps t = 1..K (the start-of-epoch point
+        # at inner_step 0 is reported separately by the v0_* keys above).
+        inner_rows = [r for r in deviation_series if r["inner_step"] > 0.0]
+        if inner_rows:
+            rel = [r["dev_rel"] for r in inner_rows]
+            cos = [r["cos_sim"] for r in inner_rows]
+            ang = [r["angle_deg"] for r in inner_rows]
+            dnorm = [r["dev_norm"] for r in inner_rows]
+            metrics.update({
+                "inner_dev_rel_mean": _avg(rel),
+                "inner_dev_rel_max": float(max(rel)),
+                "inner_dev_rel_last": float(rel[-1]),
+                "inner_cos_sim_mean": _avg(cos),
+                "inner_cos_sim_min": float(min(cos)),
+                "inner_cos_sim_last": float(cos[-1]),
+                "inner_angle_deg_mean": _avg(ang),
+                "inner_angle_deg_max": float(max(ang)),
+                "inner_angle_deg_last": float(ang[-1]),
+                "inner_dev_norm_mean": _avg(dnorm),
+                "inner_dev_norm_last": float(dnorm[-1]),
+            })
+
+        # Stash the full within-epoch curve for the runner to push to W&B
+        # as a table + line plots (see ``log_deviation_inner``).  Only when
+        # inner logging actually ran; the pure start-of-epoch point is
+        # already covered by the v0_* scalars.
+        self.last_inner_deviation = deviation_series if inner_rows else None
+
+        return metrics

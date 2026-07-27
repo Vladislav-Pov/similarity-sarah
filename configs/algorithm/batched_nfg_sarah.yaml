@@ -80,6 +80,28 @@ clip_clients_per_epoch: 3
 # meant only for diagnostic / paper-figure runs.  Default false.
 log_deviation: false
 
+# ── Diagnostic: within-epoch deviation curve (optional, EXPENSIVE) ────
+# When true, in addition to the start-of-epoch point, the running
+# estimator v_t is compared against the exact lemma reference
+#   g_t = ∇(f − f_1)(w_t) = (1/n) Σ_{i=2..n} (∇f_i − ∇f_1)(w_t)
+# at EVERY inner step t of the epoch (evaluated at the current iterate
+# w_t, just before the prox move).  For every point three deviation
+# flavours are recorded:
+#   * proportional  ‖v_t − g_t‖ / ‖g_t‖   (fraction of the true norm),
+#   * directional   cos∠(v_t, g_t) and the angle in degrees,
+#   * absolute      ‖v_t − g_t‖.
+# Per-epoch aggregates (mean / max / last, plus min for the cosine) are
+# written to W&B as scalar time-series (``…/train/inner_dev_rel_*``,
+# ``…/train/inner_angle_deg_*``, ``…/train/inner_cos_sim_*``), and the
+# full within-epoch curve is pushed as a W&B table + line plots
+# (``…/train/inner_deviation/*``) so the shape "at every moment of the
+# epoch" is inspectable per epoch.  Implies ``log_deviation`` for the
+# start-of-epoch point.  Cost: one exact full-gradient anchor (a full
+# deterministic pass on the server loader + every client loader) PER
+# INNER STEP — i.e. K SVRS-style refreshes per epoch — so reserve this
+# for short diagnostic / paper-figure runs.  Default false.
+log_deviation_inner: false
+
 # ── AccVRS-style inexact prox solvers (optional) ──────────────────────
 # Set ``prox_solver`` to ``accvrs_batch_sgd`` or ``accvrs_batch_adam`` to
 # use the inner-loop solver ported from AccVRS/resnet_exp/new_alg.argminA

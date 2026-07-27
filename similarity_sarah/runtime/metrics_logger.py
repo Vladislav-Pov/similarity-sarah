@@ -88,5 +88,57 @@ class WandbLogger:
         if metrics:
             self.run.log(metrics)
 
+    def log_deviation_series(
+        self,
+        *,
+        algo: str,
+        step: int,
+        rows: list[Mapping[str, float]],
+        split: str = "train",
+    ) -> None:
+        """Log a within-epoch estimator-deviation curve at ``step``.
+
+        ``rows`` is one dict per inner step (``inner_step`` 0 = start of
+        epoch) carrying the deviation flavours computed by the algorithm
+        (``dev_norm``, ``dev_rel``, ``cos_sim``, ``angle_deg``, ``est_norm``,
+        ``ref_norm``).  Emitted as a W&B ``Table`` plus prebuilt line plots
+        of the proportional (``dev_rel``) and angular (``angle_deg``)
+        deviation vs. ``inner_step`` — a single ``run.log`` call so the
+        global step stays monotonic with the per-epoch scalar logging.
+        Failures (e.g. a W&B API mismatch) are swallowed so a diagnostic
+        never crashes training.
+        """
+        if not rows:
+            return
+        try:
+            import wandb
+
+            cols = [
+                "inner_step", "dev_norm", "dev_rel",
+                "cos_sim", "angle_deg", "est_norm", "ref_norm",
+            ]
+            table = wandb.Table(columns=cols)
+            for r in rows:
+                table.add_data(*[float(r.get(c, float("nan"))) for c in cols])
+
+            prefix = f"{algo}/{split}/inner_deviation"
+            payload: dict[str, Any] = {f"{prefix}/table": table}
+            for y, title in (
+                ("dev_rel", "‖v-g‖/‖g‖ within epoch"),
+                ("angle_deg", "∠(v, g) within epoch [deg]"),
+                ("cos_sim", "cos∠(v, g) within epoch"),
+            ):
+                payload[f"{prefix}/{y}_vs_step"] = wandb.plot.line(
+                    table, "inner_step", y, title=title,
+                )
+            self.run.log(payload, step=step)
+        except Exception:  # pragma: no cover - diagnostic must never crash
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "log_deviation_series failed; skipping W&B curve.",
+                exc_info=True,
+            )
+
     def finish(self) -> None:
         self.run.finish()

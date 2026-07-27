@@ -519,6 +519,11 @@ class Runner:
                         algo_cfg, "log_deviation", default=False,
                     ),
                 ),
+                log_deviation_inner=bool(
+                    OmegaConf.select(
+                        algo_cfg, "log_deviation_inner", default=False,
+                    ),
+                ),
             )
         elif algo_cfg.name == "svrs":
             algorithm = SVRS(
@@ -726,6 +731,18 @@ class Runner:
                     },
                     step=step,
                 )
+
+                # Within-epoch deviation curve (log_deviation_inner) — the
+                # full per-inner-step series is logged as a W&B table + line
+                # plots at this epoch's step (a single log call keeps the
+                # global step monotonic).  Duck-typed so non-W&B loggers and
+                # runs without the flag are silently skipped.
+                inner_series = getattr(self.algorithm, "last_inner_deviation", None)
+                log_series = getattr(self._logger, "log_deviation_series", None)
+                if inner_series and callable(log_series):
+                    log_series(algo=algo_name, step=step, rows=inner_series)
+                if inner_series is not None:
+                    self.algorithm.last_inner_deviation = None
 
             if (epoch + 1) % eval_every == 0:
                 val_metrics = self.task.evaluate(
