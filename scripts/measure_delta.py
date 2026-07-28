@@ -154,12 +154,18 @@ def apply_preprocess(
     components: torch.Tensor | None,
     scale: torch.Tensor | None,
 ) -> torch.Tensor:
-    """Center → (optional PCA project) → (optional standardise)."""
-    out = emb - mean
+    """Center → (optional PCA project) → (optional standardise).
+
+    The preprocessing tensors are fit once on the (CPU) pooled embeddings; here
+    we move them to ``emb``'s device so the same fit can be applied to CPU or
+    GPU feature batches interchangeably.
+    """
+    dev = emb.device
+    out = emb - mean.to(dev)
     if components is not None:
-        out = out @ components.T
+        out = out @ components.to(dev).T
     if scale is not None:
-        out = out / scale
+        out = out / scale.to(dev)
     return out
 
 
